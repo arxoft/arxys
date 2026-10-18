@@ -150,6 +150,31 @@ notion task update 42 Tags "has-env-change"
 
 ---
 
+---
+
+## Duration
+
+The `Duration` field records how long a task actually took to complete, in `HH:MM` format (e.g. `02:30` for two and a half hours).
+
+- **Never replace Duration — always increment it.** Each time a task is updated, add the new time spent to the existing value.
+- Duration is provided by the human — the AI estimates it from context (e.g. the time between `Created On` and the PR being raised), but always confirms with the human before setting it.
+- The AI should ask: *"How long did this take since the last update? I'll add it to the current total."*
+- On the first update (when Duration is empty), the full elapsed time is set directly.
+
+**Example — first set:**
+```bash
+notion task update 42 Duration "01:45"
+```
+
+**Example — incrementing on a subsequent update (previous: 01:45, adding 00:45):**
+```bash
+notion task update 42 Duration "02:30"
+```
+
+The CLI will display the current Duration value when you update this field as a reminder to increment rather than replace.
+
+---
+
 ## Summary
 
 | Rule          | Guideline                                                                 |
@@ -161,3 +186,4 @@ notion task update 42 Tags "has-env-change"
 | Status change | Always comment before updating the Status property                        |
 | Tags          | Add `has-migration` or `has-env-change` when applicable                   |
 | Effort        | Set Fibonacci points (1–13); 13 = too big, consider splitting             |
+| Duration      | HH:MM format; always INCREMENT — never replace; confirm with human each time |

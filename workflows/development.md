@@ -15,7 +15,7 @@
 
 - Branch naming: `<root-branch>_<milestone>_<No.>-short-task-name` or `<root-branch>_<No.>-short-task-name` for standalone tasks.
 - Suggest a branch name for the task.
-- you can create the branch(es) out of root branch(es) if working dir(s) is clean and you know the root branch name of repo(s) 
+- After human approves the suggested branch name, create the branch locally using `git checkout -b <branch-name>` from the root branch, and switch to it before starting any work. Never create branches via GitHub API or MCP — local only.
 - The `Branch Name` property must be populated before a branch is created.
 - Never push directly to the root branch.
 
