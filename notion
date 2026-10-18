@@ -3,109 +3,234 @@
 # notion — Notion CLI for task management via Notion API
 # =============================================================================
 # Usage:
-#   notion task list                              List tasks grouped by Status
-#   notion task list --filter <prop> <val>        Filter tasks
-#   notion task list --sort <prop> [asc|desc]     Sort tasks
-#   notion task show <No.>                        Show task details + comments
-#   notion task create --title "..." [--prop val] Create a task
-#   notion task update <No.> <property> <value>   Update a task property
-#   notion comment add <No.> "text"               Add a comment
-#   notion user list                              List workspace members
-#   notion task assign <No.> <email[,email,...]>  Set assignees (replaces all)
-#   notion task unassign <No.> <email[,email,..]> Remove specific assignees
-#   notion db list                                List DB aliases
-#   notion db bootstrap                           Provision DB with standard schema
-#   notion db bootstrap --milestone <uuid>        Bootstrap with Milestone relation to another DB
-#   notion rules                                  Display workspace best practices
-#   notion workflow list                          List available workflows
-#   notion workflow show <name>                   Show a specific workflow
+#   notion [--project <alias>] task list              List tasks grouped by Status
+#   notion [--project <alias>] task list --filter <prop> <val>   Filter tasks
+#   notion [--project <alias>] task list --sort <prop> [asc|desc] Sort tasks
+#   notion [--project <alias>] task show <No.>        Show task details + comments
+#   notion [--project <alias>] task create --title "..." [--prop val]  Create a task
+#   notion [--project <alias>] task update <No.> <property> <value>    Update a task
+#   notion [--project <alias>] comment add <No.> "text"  Add a comment
+#   notion [--project <alias>] user list              List workspace members
+#   notion [--project <alias>] task assign <No.> <email[,email,...]>   Set assignees
+#   notion [--project <alias>] task unassign <No.> <email[,email,..]>  Remove assignees
+#   notion [--project <alias>] db list                List configured projects
+#   notion [--project <alias>] db bootstrap           Provision DB with standard schema
+#   notion [--project <alias>] db bootstrap --milestone <uuid>  Bootstrap with Milestone relation
+#   notion rules                                      Display workspace best practices
+#   notion workflow list                              List available workflows
+#   notion workflow show <name>                       Show a specific workflow
 #
-# --db overrides NOTION_DATABASE_ID for this invocation only.
-# Aliases are defined in .env.notion as NOTION_DATABASE_ID:<ALIAS>=<uuid>
-# e.g.  NOTION_DATABASE_ID:VENTURES=3da11e67af4180c4...
-#       notion --db ventures task list
+# Config is read from ~/.notion/config (INI format).
+# Use --project <alias> to select a project block; defaults to [default] if omitted.
 # =============================================================================
 
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# Config — load from .env.notion
+# Config — INI parser for ~/.notion/config
+#
+# Format:
+#   [default]
+#   api_key=secret_xxx
+#   user=alice@example.com
+#
+#   [my-project]
+#   database_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   user=bob@example.com        # optional override
+#   api_key=secret_yyy          # optional override
 # ---------------------------------------------------------------------------
-ENV_FILE="${PWD}/.env.notion"
+NOTION_CONFIG_FILE="${HOME}/.notion/config"
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo -e "\033[31mERROR:\033[0m .env.notion not found in current directory (${PWD})"
-  echo ""
-  echo "Create .env.notion with:"
-  echo "  NOTION_API_KEY=secret_xxxx       # from notion.so/profile/integrations"
-  echo "  NOTION_DATABASE_ID=xxxx          # from board URL: notion.so/.../<THIS_PART>?v=..."
-  exit 1
-fi
-
-# Declare before the parsing loop to avoid set -u issues
-declare -A _NOTION_DB_ALIASES=()
-
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _line="${_line%%#*}"
-  _line="${_line//[$'\r']}"
-  [[ -z "${_line// }" ]] && continue
-  _key="${_line%%=*}"
-  _val="${_line#*=}"
-  _key="${_key#"${_key%%[![:space:]]*}"}" ; _key="${_key%"${_key##*[![:space:]]}"}"
-  _val="${_val#"${_val%%[![:space:]]*}"}" ; _val="${_val%"${_val##*[![:space:]]}"}"
-  _val="${_val#\"}" ; _val="${_val%\"}"
-  _val="${_val#\'}" ; _val="${_val%\'}"
-  if [[ "$_key" =~ ^NOTION_DATABASE_ID:(.+)$ ]]; then
-    _alias="${BASH_REMATCH[1],,}"
-    _NOTION_DB_ALIASES["$_alias"]="$_val"
-  elif [[ "$_key" =~ ^NOTION_ ]]; then
-    export "$_key"="$_val"
-  fi
-done < "$ENV_FILE"
-unset _line _key _val
-
-NOTION_API_KEY="${NOTION_API_KEY:-}"
-NOTION_DATABASE_ID="${NOTION_DATABASE_ID:-}"
-NOTION_USER="${NOTION_USER:-}"
-NOTION_USER_EMAIL="${NOTION_USER_EMAIL:-}"
+NOTION_API_KEY=""
+NOTION_DATABASE_ID=""
+NOTION_USER=""
+NOTION_USER_EMAIL=""
 NOTION_STATUS_PROPERTY_NAME="Status"
-NOTION_TITLE_PROPERTY_NAME="${NOTION_TITLE_PROPERTY_NAME:-Task name}"
+NOTION_TITLE_PROPERTY_NAME="Task name"
 NOTION_VERSION="2022-06-28"
 BASE_URL="https://api.notion.com/v1"
 
+# Storage for parsed INI: section__key=value (we'll resolve after arg parsing)
+declare -A _INI_VALUES=()
+# Track which project blocks exist (for db list)
+declare -a _INI_SECTIONS=()
+
+_parse_ini() {
+  local file="$1"
+  local current_section=""
+  while IFS= read -r _iline || [[ -n "$_iline" ]]; do
+    _iline="${_iline%%#*}"           # strip comments
+    _iline="${_iline//[$'\r']}"      # strip CR
+    _iline="${_iline#"${_iline%%[![:space:]]*}"}"   # ltrim
+    _iline="${_iline%"${_iline##*[![:space:]]}"}"   # rtrim
+    [[ -z "$_iline" ]] && continue
+
+    if [[ "$_iline" =~ ^\[(.+)\]$ ]]; then
+      current_section="${BASH_REMATCH[1],,}"   # lowercase section name
+      # record non-default sections
+      if [[ "$current_section" != "default" ]]; then
+        _INI_SECTIONS+=("$current_section")
+      fi
+    elif [[ "$_iline" =~ ^([^=]+)=(.*)$ ]]; then
+      local _ikey="${BASH_REMATCH[1]}" _ival="${BASH_REMATCH[2]}"
+      _ikey="${_ikey#"${_ikey%%[![:space:]]*}"}" ; _ikey="${_ikey%"${_ikey##*[![:space:]]}"}"
+      _ival="${_ival#"${_ival%%[![:space:]]*}"}" ; _ival="${_ival%"${_ival##*[![:space:]]}"}"
+      _ival="${_ival#\"}" ; _ival="${_ival%\"}"
+      _ival="${_ival#\'}" ; _ival="${_ival%\'}"
+      _ikey="${_ikey,,}"   # lowercase key
+      if [[ -n "$current_section" ]]; then
+        _INI_VALUES["${current_section}__${_ikey}"]="$_ival"
+      fi
+    fi
+  done < "$file"
+  unset _iline _ikey _ival
+}
+
+# Resolve a key: project block wins over default
+_ini_get() {
+  local section="$1" key="$2"
+  local block_val="${_INI_VALUES["${section}__${key}"]:-}"
+  if [[ -n "$block_val" ]]; then
+    echo "$block_val"
+  else
+    echo "${_INI_VALUES["default__${key}"]:-}"
+  fi
+}
+
 # ---------------------------------------------------------------------------
-# Early arg parsing — consume --db <id|alias> before the noun
+# Early arg parsing — consume --project <alias> and --db <id|alias> before noun
 # ---------------------------------------------------------------------------
+_PROJECT_ALIAS=""
 _DB_OVERRIDE=""
 _REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --project)
+      [[ $# -lt 2 ]] && { echo -e "\033[31mERROR:\033[0m --project requires an argument" >&2; exit 1; }
+      _PROJECT_ALIAS="${2,,}"; shift 2 ;;
+    --project=*)
+      _PROJECT_ALIAS="${1#--project=}"; _PROJECT_ALIAS="${_PROJECT_ALIAS,,}"; shift ;;
     --db)
       [[ $# -lt 2 ]] && { echo -e "\033[31mERROR:\033[0m --db requires an argument" >&2; exit 1; }
-      _DB_OVERRIDE="$2"; shift; shift ;;
+      _DB_OVERRIDE="$2"; shift 2 ;;
     *) _REMAINING_ARGS+=("$1"); shift ;;
   esac
 done
 set -- "${_REMAINING_ARGS[@]+"${_REMAINING_ARGS[@]}"}"
 unset _REMAINING_ARGS
 
+# ---------------------------------------------------------------------------
+# Load config: try ~/.notion/config first, fall back to .env.notion
+# ---------------------------------------------------------------------------
+_CONFIG_SOURCE=""
+
+if [[ -f "$NOTION_CONFIG_FILE" ]]; then
+  _parse_ini "$NOTION_CONFIG_FILE"
+  _CONFIG_SOURCE="global"
+
+  # Validate --project alias exists (check if any key was parsed for this section)
+  if [[ -n "$_PROJECT_ALIAS" ]]; then
+    _alias_found=0
+    for _ikey in "${!_INI_VALUES[@]}"; do
+      if [[ "$_ikey" == "${_PROJECT_ALIAS}__"* ]]; then
+        _alias_found=1; break
+      fi
+    done
+    if [[ "$_alias_found" -eq 0 ]]; then
+      echo -e "\033[31mERROR:\033[0m Project alias '${_PROJECT_ALIAS}' not found in ${NOTION_CONFIG_FILE}" >&2
+      echo "  Run 'notion db list' to see configured projects." >&2
+      exit 1
+    fi
+    unset _alias_found _ikey
+  fi
+
+  # Resolve values: project block overrides default
+  _section="${_PROJECT_ALIAS:-default}"
+  NOTION_API_KEY="$(_ini_get "$_section" "api_key")"
+  NOTION_DATABASE_ID="$(_ini_get "$_section" "database_id")"
+  NOTION_USER="$(_ini_get "$_section" "user")"
+  NOTION_USER_EMAIL="$(_ini_get "$_section" "user_email")"
+  _tprop="$(_ini_get "$_section" "title_property_name")"
+  [[ -n "$_tprop" ]] && NOTION_TITLE_PROPERTY_NAME="$_tprop"
+  unset _section _tprop local_db
+
+else
+  # ---------------------------------------------------------------------------
+  # Fallback: .env.notion in current directory (deprecated)
+  # ---------------------------------------------------------------------------
+  ENV_FILE="${PWD}/.env.notion"
+
+  if [[ -f "$ENV_FILE" ]]; then
+    echo -e "\033[33m" >&2
+    echo "  ╔══════════════════════════════════════════════════════════════╗" >&2
+    echo "  ║  DEPRECATION WARNING                                         ║" >&2
+    echo "  ║                                                              ║" >&2
+    echo "  ║  notion is reading config from: .env.notion                  ║" >&2
+    echo "  ║  This method is deprecated. Migrate to:                      ║" >&2
+    echo "  ║    ~/.notion/config   (global INI format)                    ║" >&2
+    echo "  ║                                                              ║" >&2
+    echo "  ║  See README for setup instructions.                          ║" >&2
+    echo "  ╚══════════════════════════════════════════════════════════════╝" >&2
+    echo -e "\033[0m" >&2
+
+    declare -A _NOTION_DB_ALIASES=()
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+      _line="${_line%%#*}"
+      _line="${_line//[$'\r']}"
+      [[ -z "${_line// }" ]] && continue
+      _key="${_line%%=*}"
+      _val="${_line#*=}"
+      _key="${_key#"${_key%%[![:space:]]*}"}" ; _key="${_key%"${_key##*[![:space:]]}"}"
+      _val="${_val#"${_val%%[![:space:]]*}"}" ; _val="${_val%"${_val##*[![:space:]]}"}"
+      _val="${_val#\"}" ; _val="${_val%\"}"
+      _val="${_val#\'}" ; _val="${_val%\'}"
+      if [[ "$_key" =~ ^NOTION_DATABASE_ID:(.+)$ ]]; then
+        _alias="${BASH_REMATCH[1],,}"
+        _NOTION_DB_ALIASES["$_alias"]="$_val"
+      elif [[ "$_key" =~ ^NOTION_ ]]; then
+        export "$_key"="$_val"
+      fi
+    done < "$ENV_FILE"
+    unset _line _key _val
+    _CONFIG_SOURCE="legacy"
+
+    NOTION_API_KEY="${NOTION_API_KEY:-}"
+    NOTION_DATABASE_ID="${NOTION_DATABASE_ID:-}"
+    NOTION_USER="${NOTION_USER:-}"
+    NOTION_USER_EMAIL="${NOTION_USER_EMAIL:-}"
+    NOTION_TITLE_PROPERTY_NAME="${NOTION_TITLE_PROPERTY_NAME:-Task name}"
+  fi
+fi
+
+# Apply --db override (works in both modes)
 if [[ -n "$_DB_OVERRIDE" ]]; then
   if [[ "$_DB_OVERRIDE" =~ ^[0-9a-fA-F-]{32,36}$ ]]; then
     NOTION_DATABASE_ID="$_DB_OVERRIDE"
   else
     _alias_lower="${_DB_OVERRIDE,,}"
-    _ALIAS_VAL="${_NOTION_DB_ALIASES[$_alias_lower]:-}"
-    if [[ -z "$_ALIAS_VAL" ]]; then
-      echo -e "\033[31mERROR:\033[0m DB alias '${_DB_OVERRIDE}' not found." >&2
-      echo "  Define it in .env.notion as: NOTION_DATABASE_ID:${_DB_OVERRIDE^^}=<uuid>" >&2
-      echo "  Run 'notion db list' to see available aliases." >&2
-      exit 1
+    if [[ "$_CONFIG_SOURCE" == "legacy" ]]; then
+      _ALIAS_VAL="${_NOTION_DB_ALIASES[$_alias_lower]:-}"
+      if [[ -z "$_ALIAS_VAL" ]]; then
+        echo -e "\033[31mERROR:\033[0m DB alias '${_DB_OVERRIDE}' not found." >&2
+        echo "  Define it in .env.notion as: NOTION_DATABASE_ID:${_DB_OVERRIDE^^}=<uuid>" >&2
+        exit 1
+      fi
+      NOTION_DATABASE_ID="$_ALIAS_VAL"
+      unset _ALIAS_VAL
+    else
+      _ALIAS_VAL="${_INI_VALUES["${_alias_lower}__database_id"]:-}"
+      if [[ -z "$_ALIAS_VAL" ]]; then
+        echo -e "\033[31mERROR:\033[0m Project alias '${_DB_OVERRIDE}' not found in ${NOTION_CONFIG_FILE}." >&2
+        echo "  Run 'notion db list' to see configured projects." >&2
+        exit 1
+      fi
+      NOTION_DATABASE_ID="$_ALIAS_VAL"
+      unset _ALIAS_VAL
     fi
-    NOTION_DATABASE_ID="$_ALIAS_VAL"
-    unset _alias_lower _ALIAS_VAL
+    unset _alias_lower
   fi
 fi
-unset _DB_OVERRIDE
+unset _DB_OVERRIDE _PROJECT_ALIAS
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -127,8 +252,12 @@ require_deps() {
 }
 
 require_env() {
-  [[ -z "$NOTION_API_KEY" ]]      && die "NOTION_API_KEY is not set in .env.notion"
-  [[ -z "$NOTION_DATABASE_ID" ]]  && die "NOTION_DATABASE_ID is not set in .env.notion"
+  if [[ -z "$NOTION_API_KEY" ]]; then
+    die "api_key is not configured.\n\n  Set it in ~/.notion/config under [default]:\n    api_key=secret_xxx\n\n  Or pass --project <alias> for a project-specific block.\n  See 'notion help' or README for setup."
+  fi
+  if [[ -z "$NOTION_DATABASE_ID" ]]; then
+    die "database_id is not configured.\n\n  Set it in ~/.notion/config under your project block:\n    [my-project]\n    database_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n  Then run: notion --project my-project task list\n  See 'notion help' or README for setup."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -610,6 +739,19 @@ cmd_task_update() {
 
   local prop_type prop_body body
   prop_type=$(echo "$page" | jq -r --arg p "$real_prop" '.properties[$p].type')
+
+  # Duration field: show current value so the human can consciously increment it
+  if [[ "${real_prop,,}" == "duration" ]]; then
+    local current_duration
+    current_duration=$(echo "$page" | jq -r --arg p "$real_prop" \
+      '.properties[$p].rich_text | map(.plain_text) | join("")')
+    if [[ -n "$current_duration" ]]; then
+      yellow "⚠  Duration currently set to: ${current_duration}"
+      yellow "   Duration must be INCREMENTED, not replaced."
+      yellow "   Confirm the new value (${value}) includes the previous time before proceeding."
+    fi
+  fi
+
   prop_body=$(build_prop_body "$prop_type" "$value")
 
   # Auto-comment on status changes to maintain audit trail (per RULES.md)
@@ -824,27 +966,63 @@ cmd_user_list() {
 
 cmd_db_list() {
   echo ""
-  bold "Available databases"
+  bold "Configured projects"
   echo ""
-  if [[ -n "$NOTION_DATABASE_ID" ]]; then
-    printf "  \033[1m%-20s\033[0m %s\n" "(default)" "$NOTION_DATABASE_ID"
+
+  if [[ "$_CONFIG_SOURCE" == "global" ]]; then
+    # Show [default] block
+    local def_key def_db def_user
+    def_key="${_INI_VALUES["default__api_key"]:-}"
+    def_db="${_INI_VALUES["default__database_id"]:-}"
+    def_user="${_INI_VALUES["default__user"]:-}"
+
+    if [[ -n "$def_key" || -n "$def_db" || -n "$def_user" ]]; then
+      bold "  [default]"
+      [[ -n "$def_key"  ]] && printf "    %-18s %s\n" "api_key:"     "${def_key:0:20}…"
+      [[ -n "$def_db"   ]] && printf "    %-18s %s\n" "database_id:" "$def_db"
+      [[ -n "$def_user" ]] && printf "    %-18s %s\n" "user:"        "$def_user"
+      echo ""
+    fi
+
+    if [[ ${#_INI_SECTIONS[@]} -eq 0 ]]; then
+      yellow "  No project blocks defined yet."
+      echo ""
+    else
+      for _sec in $(printf '%s\n' "${_INI_SECTIONS[@]}" | sort); do
+        local sec_db sec_user sec_key
+        sec_db="${_INI_VALUES["${_sec}__database_id"]:-}"
+        sec_user="${_INI_VALUES["${_sec}__user"]:-}"
+        sec_key="${_INI_VALUES["${_sec}__api_key"]:-}"
+        bold "  [${_sec}]"
+        [[ -n "$sec_db"   ]] && printf "    %-18s %s\n" "database_id:" "$sec_db"
+        [[ -n "$sec_user" ]] && printf "    %-18s %s\n" "user:"        "$sec_user"
+        [[ -n "$sec_key"  ]] && printf "    %-18s %s\n" "api_key:"     "${sec_key:0:20}…"
+        echo ""
+      done
+    fi
+
+    dim "  Config file: ${NOTION_CONFIG_FILE}"
+    echo ""
+    dim "Usage: notion --project <alias> task list"
+    dim "       notion --project <alias> task create --title \"...\""
+
+  else
+    # Legacy .env.notion mode
+    if [[ -n "$NOTION_DATABASE_ID" ]]; then
+      printf "  \033[1m%-20s\033[0m %s\n" "(default)" "$NOTION_DATABASE_ID"
+    fi
+    for _alias in $(echo "${!_NOTION_DB_ALIASES[@]}" | tr ' ' '\n' | sort); do
+      printf "  \033[1m%-20s\033[0m %s\n" "$_alias" "${_NOTION_DB_ALIASES[$_alias]}"
+    done
+    if [[ ${#_NOTION_DB_ALIASES[@]} -eq 0 && -z "$NOTION_DATABASE_ID" ]]; then
+      yellow "  No databases configured."
+    fi
+    echo ""
+    dim "  (legacy .env.notion mode — migrate to ~/.notion/config)"
+    echo ""
+    dim "Usage: notion --db <alias> task list"
   fi
-  for _alias in $(echo "${!_NOTION_DB_ALIASES[@]}" | tr ' ' '\n' | sort); do
-    printf "  \033[1m%-20s\033[0m %s\n" "$_alias" "${_NOTION_DB_ALIASES[$_alias]}"
-  done
-  if [[ ${#_NOTION_DB_ALIASES[@]} -eq 0 && -z "$NOTION_DATABASE_ID" ]]; then
-    yellow "  No databases configured. Add entries to .env.notion."
-  elif [[ ${#_NOTION_DB_ALIASES[@]} -eq 0 ]]; then
-    dim "  No aliases defined."
-  fi
-  echo ""
-  dim "  Define aliases in .env.notion:"
-  dim "    NOTION_DATABASE_ID=<uuid>                  # default"
-  dim "    NOTION_DATABASE_ID:VENTURES=<uuid>          # notion --db ventures"
-  dim "    NOTION_DATABASE_ID:CLIENTS=<uuid>           # notion --db clients"
-  echo ""
-  dim "Usage: notion --db <alias> task list"
-  dim "       notion --db <uuid>  task list"
+
   echo ""
 }
 
@@ -899,7 +1077,9 @@ cmd_db_bootstrap() {
     "Effort":       {"number": {"format": "number"}},
     "Git Branch":   {"rich_text": {}},
     "Pull Request": {"url": {}},
-    "Milestone":    {"relation": {"database_id": $mid, "single_property": {}}}
+    "Milestone":    {"relation": {"database_id": $mid, "single_property": {}}},
+    "Created On":   {"created_time": {}},
+    "Duration":     {"rich_text": {}}
   }')
 
   local body result
@@ -943,6 +1123,8 @@ cmd_db_bootstrap_help() {
   printf "  %-14s %-12s %s\n" "Git Branch"   "rich_text"  "Associated git branch name"
   printf "  %-14s %-12s %s\n" "Pull Request" "url"        "GitHub pull request URL"
   printf "  %-14s %-12s %s\n" "Milestone"    "relation"   "Parent milestone task (self-relation by default)"
+  printf "  %-14s %-12s %s\n" "Created On"   "created_time" "Auto-set by Notion when the task is created"
+  printf "  %-14s %-12s %s\n" "Duration"     "rich_text"  "HH:MM — time taken to complete; incremented on each update"
   echo ""
   bold "PRE-REQUISITES:"
   echo ""
@@ -1085,10 +1267,10 @@ cmd_help() {
   bold "Notion CLI — Manage Notion tasks from the terminal"
   echo ""
   bold "USAGE:"
-  echo "  notion [--db <id|alias>] <resource> <action> [target] [flags]"
+  echo "  notion [--project <alias>] <resource> <action> [target] [flags]"
   echo ""
   bold "OPTIONS:"
-  echo "  --db <id|alias>    Override NOTION_DATABASE_ID for this run"
+  echo "  --project <alias>  Select a project block from ~/.notion/config"
   echo ""
   bold "TASK:"
   echo "  notion task list                              List tasks grouped by Status"
@@ -1110,7 +1292,7 @@ cmd_help() {
   echo "  notion user list                              List workspace members and emails"
   echo ""
   bold "DB:"
-  echo "  notion db list                                List DB aliases from .env.notion"
+  echo "  notion db list                                List configured project blocks"
   echo "  notion db bootstrap                           Provision DB with standard schema"
   echo "  notion db bootstrap --milestone <uuid>        Provision with Milestone relation to another DB"
   echo "  notion db bootstrap --help                    Show bootstrap details"
@@ -1122,34 +1304,32 @@ cmd_help() {
   echo "    Names: development, review, testing, deployment, planning,"
   echo "           task-creation, bug-reporting, hotfix, release, onboarding"
   echo ""
-  bold "ENV (.env.notion):"
-  echo "  NOTION_API_KEY=secret_xxx"
-  echo "  NOTION_DATABASE_ID=<uuid>                         # default DB"
-  echo "  NOTION_DATABASE_ID:VENTURES=<uuid>                # alias: --db ventures"
-  echo "  NOTION_DATABASE_ID:CLIENTS=<uuid>                 # alias: --db clients"
-  echo "  NOTION_TITLE_PROPERTY_NAME=Title                  # title prop name (default: Task name)"
-  echo "  NOTION_USER=ako                                   # your handle — prefixes all comments"
-  echo "  NOTION_USER_EMAIL=ako@example.com                 # your email — used for --self and --mine"
+  bold "CONFIG (~/.notion/config):"
+  echo "  [default]"
+  echo "  api_key=secret_xxx                            # required — from notion.so/profile/integrations"
+  echo "  user=alice@example.com                        # required — your workspace email / display name"
+  echo ""
+  echo "  [my-project]"
+  echo "  database_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # required per project"
+  echo "  user=bob@example.com                          # optional override"
+  echo "  api_key=secret_yyy                            # optional override"
   echo ""
   bold "EXAMPLES:"
-  echo "  notion task list"
-  echo "  notion task list --mine"
-  echo "  notion task list --filter Status \"In Progress\""
-  echo "  notion task list --filter \"Assigned To\" user@example.com"
-  echo "  notion task list --sort \"No.\" desc"
-  echo "  notion task show 42"
-  echo "  notion task create --title \"Fix login bug\" --self"
-  echo "  notion task create --title \"Fix login bug\" --Status \"To Do\" --Priority \"High\""
-  echo "  notion task update 42 Status \"In Review\""
-  echo "  notion task update 42 \"Due Date\" 2026-09-15"
-  echo "  notion task assign 42 --self"
-  echo "  notion task assign 42 user@example.com,other@example.com"
-  echo "  notion task unassign 42 user@example.com"
-  echo "  notion comment add 42 \"Blocked on design review\""
-  echo "  notion user list"
+  echo "  notion --project my-app task list"
+  echo "  notion --project my-app task list --mine"
+  echo "  notion --project my-app task list --filter Status \"In Progress\""
+  echo "  notion --project my-app task list --sort \"No.\" desc"
+  echo "  notion --project my-app task show 42"
+  echo "  notion --project my-app task create --title \"Fix login bug\" --self"
+  echo "  notion --project my-app task create --title \"Fix login bug\" --Status \"To Do\" --Priority \"High\""
+  echo "  notion --project my-app task update 42 Status \"In Review\""
+  echo "  notion --project my-app task update 42 \"Due Date\" 2026-09-15"
+  echo "  notion --project my-app task assign 42 --self"
+  echo "  notion --project my-app task assign 42 user@example.com,other@example.com"
+  echo "  notion --project my-app task unassign 42 user@example.com"
+  echo "  notion --project my-app comment add 42 \"Blocked on design review\""
+  echo "  notion --project my-app user list"
   echo "  notion db list"
-  echo "  notion --db ventures task list"
-  echo "  notion --db ventures task create --title \"New venture\""
   echo "  notion workflow show development"
   echo ""
 }
