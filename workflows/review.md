@@ -42,7 +42,19 @@ notion task show <No.>
 
 ---
 
-## 3. Inspect the Diff
+## 3. Check PR State
+
+Before inspecting any diff, use the GitHub MCP `get_pull_request` tool to fetch the PR associated with the branch. Check the `state` field:
+
+- **`open`** — proceed to step 4 (Inspect the Diff).
+- **`merged`** — the branch is already in main/master. Skip `./review`. Check out the target branch, inspect the code directly, and fix any bugs in place. Then continue from step 7 (Outcome) as appropriate.
+- **`closed`** (not merged) — the PR was abandoned. Flag for clarification before proceeding; do not review.
+
+This check prevents running `./review` against a deleted or already-merged branch.
+
+---
+
+## 4. Inspect the Diff
 
 Run `./review <branch-name>` in each relevant repo. This script fetches the branch, merges it into the current branch in `--no-commit` mode, and stages the diff for review.
 
@@ -61,7 +73,7 @@ Minor issues (typos, formatting, small logic fixes):
 
 ---
 
-## 4. Conflict Resolution
+## 5. Conflict Resolution
 
 If `./review` reports a merge conflict:
 
@@ -71,7 +83,7 @@ If `./review` reports a merge conflict:
 
 ---
 
-## 5. Abort a Review
+## 6. Abort a Review
 
 To abort a review in progress (e.g. wrong order, missing dependency):
 
@@ -83,7 +95,7 @@ This discards the staged merge. The working directory returns to the clean base 
 
 ---
 
-## 6. Outcome: Issues Found (Major)
+## 7. Outcome: Issues Found (Major)
 
 If a significant issue is found:
 
@@ -98,7 +110,7 @@ Also add a review comment on the GitHub PR describing the issue.
 
 ---
 
-## 7. Outcome: Approved
+## 8. Outcome: Approved
 
 If the review passes:
 
