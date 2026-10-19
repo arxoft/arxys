@@ -28,7 +28,18 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Resolve the real directory of this script, following symlinks (works on Linux + Git Bash/macOS)
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="${dir}/${src}"
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+SCRIPT_DIR="$(_resolve_script_dir)"
+unset -f _resolve_script_dir
 
 # ---------------------------------------------------------------------------
 # Config — load from .env.notion (optional for non-API commands)
@@ -117,7 +128,7 @@ yellow() { echo -e "\033[33m$*\033[0m"; }
 # ---------------------------------------------------------------------------
 require_deps() {
   for cmd in curl jq; do
-    command -v "$cmd" &>/dev/null || die "'$cmd' is required but not installed."
+    command -v "$cmd" &>/dev/null || die "'$cmd' is required but not installed. On Windows, install via: winget install jqlang.jq  (curl ships with Windows 10+)"
   done
 }
 
@@ -1128,14 +1139,18 @@ cmd_help() {
   echo "           task-creation, bug-reporting, hotfix, release, onboarding"
   echo ""
   bold "SETUP (from the cloned repo dir):"
-  echo "  mkdir -p ~/.local/bin"
-  echo "  ln -s \"\$(pwd)/notion\" ~/.local/bin/notion"
+  echo ""
+  echo "  Linux / macOS:"
+  echo "    mkdir -p ~/.local/bin"
+  echo "    ln -s \"\$(pwd)/notion\" ~/.local/bin/notion"
   echo ""
   echo "  Ensure ~/.local/bin is on your PATH:"
   echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
   echo ""
-  echo "  Then from any directory with a .env.notion:"
-  echo "    cd ~/my-project && notion task list"
+  echo "  Windows (Git Bash — run from repo dir in an elevated prompt or add manually):"
+  echo "    setx PATH \"%PATH%;%CD%\""
+  echo "    :: or add the repo dir to PATH via System → Advanced → Environment Variables"
+  echo "    :: notion.cmd is the entry point on Windows"
   echo ""
   bold "ENV (.env.notion):"
   echo "  NOTION_API_KEY=secret_xxx"
