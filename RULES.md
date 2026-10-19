@@ -150,8 +150,6 @@ notion task update 42 Tags "has-env-change"
 
 ---
 
----
-
 ## Duration
 
 The `Duration` field records how long a task actually took to complete, in `HH:MM` format (e.g. `02:30` for two and a half hours).
