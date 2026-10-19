@@ -28,6 +28,8 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
 # ---------------------------------------------------------------------------
 # Config — load from .env.notion (optional for non-API commands)
 # ---------------------------------------------------------------------------
@@ -971,7 +973,7 @@ cmd_db_bootstrap_help() {
 
 cmd_rules() {
   local rules_file
-  rules_file="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/RULES.md"
+  rules_file="${SCRIPT_DIR}/RULES.md"
   [[ ! -f "$rules_file" ]] && die "RULES.md not found at: ${rules_file}"
 
   echo ""
@@ -1003,7 +1005,7 @@ cmd_rules() {
 
 cmd_workflow_list() {
   local script_dir workflows_dir index_file
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  script_dir="${SCRIPT_DIR}"
   workflows_dir="${script_dir}/workflows"
   index_file="${workflows_dir}/README.md"
 
@@ -1036,7 +1038,7 @@ cmd_workflow_list() {
 cmd_workflow_show() {
   local name="$1"
   local script_dir workflows_dir workflow_file
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  script_dir="${SCRIPT_DIR}"
   workflows_dir="${script_dir}/workflows"
   workflow_file="${workflows_dir}/${name}.md"
 
