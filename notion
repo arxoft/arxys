@@ -1128,6 +1128,7 @@ cmd_help() {
   echo "           task-creation, bug-reporting, hotfix, release, onboarding"
   echo ""
   bold "SETUP (from the cloned repo dir):"
+  echo "  mkdir -p ~/.local/bin"
   echo "  ln -s \"\$(pwd)/notion\" ~/.local/bin/notion"
   echo ""
   echo "  Ensure ~/.local/bin is on your PATH:"
