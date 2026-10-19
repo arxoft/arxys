@@ -29,40 +29,33 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# Config — load from .env.notion
+# Config — load from .env.notion (optional for non-API commands)
 # ---------------------------------------------------------------------------
 ENV_FILE="${PWD}/.env.notion"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo -e "\033[31mERROR:\033[0m .env.notion not found in current directory (${PWD})"
-  echo ""
-  echo "Create .env.notion with:"
-  echo "  NOTION_API_KEY=secret_xxxx       # from notion.so/profile/integrations"
-  echo "  NOTION_DATABASE_ID=xxxx          # from board URL: notion.so/.../<THIS_PART>?v=..."
-  exit 1
-fi
 
 # Declare before the parsing loop to avoid set -u issues
 declare -A _NOTION_DB_ALIASES=()
 
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _line="${_line%%#*}"
-  _line="${_line//[$'\r']}"
-  [[ -z "${_line// }" ]] && continue
-  _key="${_line%%=*}"
-  _val="${_line#*=}"
-  _key="${_key#"${_key%%[![:space:]]*}"}" ; _key="${_key%"${_key##*[![:space:]]}"}"
-  _val="${_val#"${_val%%[![:space:]]*}"}" ; _val="${_val%"${_val##*[![:space:]]}"}"
-  _val="${_val#\"}" ; _val="${_val%\"}"
-  _val="${_val#\'}" ; _val="${_val%\'}"
-  if [[ "$_key" =~ ^NOTION_DATABASE_ID:(.+)$ ]]; then
-    _alias="${BASH_REMATCH[1],,}"
-    _NOTION_DB_ALIASES["$_alias"]="$_val"
-  elif [[ "$_key" =~ ^NOTION_ ]]; then
-    export "$_key"="$_val"
-  fi
-done < "$ENV_FILE"
-unset _line _key _val
+if [[ -f "$ENV_FILE" ]]; then
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _line="${_line%%#*}"
+    _line="${_line//[$'\r']}"
+    [[ -z "${_line// }" ]] && continue
+    _key="${_line%%=*}"
+    _val="${_line#*=}"
+    _key="${_key#"${_key%%[![:space:]]*}"}" ; _key="${_key%"${_key##*[![:space:]]}"}"
+    _val="${_val#"${_val%%[![:space:]]*}"}" ; _val="${_val%"${_val##*[![:space:]]}"}"
+    _val="${_val#\"}" ; _val="${_val%\"}"
+    _val="${_val#\'}" ; _val="${_val%\'}"
+    if [[ "$_key" =~ ^NOTION_DATABASE_ID:(.+)$ ]]; then
+      _alias="${BASH_REMATCH[1],,}"
+      _NOTION_DB_ALIASES["$_alias"]="$_val"
+    elif [[ "$_key" =~ ^NOTION_ ]]; then
+      export "$_key"="$_val"
+    fi
+  done < "$ENV_FILE"
+  unset _line _key _val
+fi
 
 NOTION_API_KEY="${NOTION_API_KEY:-}"
 NOTION_DATABASE_ID="${NOTION_DATABASE_ID:-}"
@@ -127,6 +120,16 @@ require_deps() {
 }
 
 require_env() {
+  if [[ ! -f "$ENV_FILE" ]]; then
+    echo -e "\033[31mERROR:\033[0m .env.notion not found in current directory (${PWD})" >&2
+    echo "" >&2
+    echo "Create .env.notion with:" >&2
+    echo "  NOTION_API_KEY=secret_xxxx       # from notion.so/profile/integrations" >&2
+    echo "  NOTION_DATABASE_ID=xxxx          # from board URL: notion.so/.../<THIS_PART>?v=..." >&2
+    echo "" >&2
+    echo "Run 'notion help' for setup instructions." >&2
+    exit 1
+  fi
   [[ -z "$NOTION_API_KEY" ]]      && die "NOTION_API_KEY is not set in .env.notion"
   [[ -z "$NOTION_DATABASE_ID" ]]  && die "NOTION_DATABASE_ID is not set in .env.notion"
 }
@@ -1170,9 +1173,6 @@ require_deps
 
 NOUN="${1:-help}"
 shift || true
-
-# Nouns that work without a valid DB configured
-_no_env_needed="rules workflow db help --help -h"
 
 case "$NOUN" in
   task)
