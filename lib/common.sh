@@ -36,17 +36,17 @@ require_deps() {
 
 require_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
-    echo -e "\033[31mERROR:\033[0m .env.arxws not found in current directory (${PWD})" >&2
+    echo -e "\033[31mERROR:\033[0m .env.arxys not found in current directory (${PWD})" >&2
     echo "" >&2
-    echo "Create .env.arxws with:" >&2
+    echo "Create .env.arxys with:" >&2
     echo "  NOTION_API_KEY=secret_xxxx       # from notion.so/profile/integrations" >&2
     echo "  NOTION_DATABASE_ID=xxxx          # from board URL: notion.so/.../<THIS_PART>?v=..." >&2
     echo "" >&2
-    echo "Run 'arxws notion help' for setup instructions." >&2
+    echo "Run 'arxys notion help' for setup instructions." >&2
     exit 1
   fi
-  [[ -z "$NOTION_API_KEY" ]]     && die "NOTION_API_KEY is not set in .env.arxws"
-  [[ -z "$NOTION_DATABASE_ID" ]] && die "NOTION_DATABASE_ID is not set in .env.arxws"
+  [[ -z "$NOTION_API_KEY" ]]     && die "NOTION_API_KEY is not set in .env.arxys"
+  [[ -z "$NOTION_DATABASE_ID" ]] && die "NOTION_DATABASE_ID is not set in .env.arxys"
 }
 
 # ---------------------------------------------------------------------------

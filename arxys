@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-# arxws — Arxoft Workspace CLI
+# arxys — Arxoft Workspace CLI
 # =============================================================================
 # Usage:
-#   arxws notion [--db <id|alias>] task    <action> [args]
-#   arxws notion [--db <id|alias>] comment <action> [args]
-#   arxws notion [--db <id|alias>] user    <action>
-#   arxws notion [--db <id|alias>] db      <action>
-#   arxws notion rules
-#   arxws notion workflow list|show <name>
-#   arxws github pr      list|show|create|merge|review [args]
-#   arxws github issue   list|show|create|update|comment [args]
-#   arxws github repo    info|list [args]
+#   arxys notion [--db <id|alias>] task    <action> [args]
+#   arxys notion [--db <id|alias>] comment <action> [args]
+#   arxys notion [--db <id|alias>] user    <action>
+#   arxys notion [--db <id|alias>] db      <action>
+#   arxys notion rules
+#   arxys notion workflow list|show <name>
+#   arxys github pr      list|show|create|merge|review [args]
+#   arxys github issue   list|show|create|update|comment [args]
+#   arxys github repo    info|list [args]
 #
 # Setup:
-#   ln -s "$(pwd)/arxws" ~/.local/bin/arxws
+#   ln -s "$(pwd)/arxys" ~/.local/bin/arxys
 #
 # See README.md for full documentation.
 # =============================================================================
@@ -45,9 +45,9 @@ LIB_DIR="${SCRIPT_DIR}/lib"
 source "${LIB_DIR}/common.sh"
 
 # ---------------------------------------------------------------------------
-# Config — load .env.arxws from the working directory
+# Config — load .env.arxys from the working directory
 # ---------------------------------------------------------------------------
-ENV_FILE="${PWD}/.env.arxws"
+ENV_FILE="${PWD}/.env.arxys"
 
 declare -A _NOTION_DB_ALIASES=()
 
@@ -142,65 +142,65 @@ _dispatch_github() {
       ;;
 
     help|--help|-h) _github_help ;;
-    *) die "Unknown resource '${noun}'. Run 'arxws github help' for usage." ;;
+    *) die "Unknown resource '${noun}'. Run 'arxys github help' for usage." ;;
   esac
 }
 
 _github_help() {
   echo ""
-  bold "arxws github — GitHub REST API wrapper"
+  bold "arxys github — GitHub REST API wrapper"
   echo ""
   bold "USAGE:"
-  echo "  arxws github <resource> <action> --repo <owner/repo> [flags]"
+  echo "  arxys github <resource> <action> --repo <owner/repo> [flags]"
   echo ""
   bold "PR:"
-  echo "  arxws github pr list   --repo o/r  [--state open|closed|all] [--mine]"
-  echo "  arxws github pr show   --repo o/r  <number>"
-  echo "  arxws github pr create --repo o/r  --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft]"
-  echo "  arxws github pr merge  --repo o/r  <number>  [--method merge|squash|rebase]"
-  echo "  arxws github pr review --repo o/r  <number>  --action approve|request-changes|comment [--body \"...\"]"
-  echo "  arxws github pr files  --repo o/r  <number>"
-  echo "  arxws github pr status --repo o/r  <number>"
+  echo "  arxys github pr list   --repo o/r  [--state open|closed|all] [--mine]"
+  echo "  arxys github pr show   --repo o/r  <number>"
+  echo "  arxys github pr create --repo o/r  --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft]"
+  echo "  arxys github pr merge  --repo o/r  <number>  [--method merge|squash|rebase]"
+  echo "  arxys github pr review --repo o/r  <number>  --action approve|request-changes|comment [--body \"...\"]"
+  echo "  arxys github pr files  --repo o/r  <number>"
+  echo "  arxys github pr status --repo o/r  <number>"
   echo ""
   bold "ISSUE:"
-  echo "  arxws github issue list    --repo o/r  [--state open|closed|all] [--label <l>] [--mine]"
-  echo "  arxws github issue show    --repo o/r  <number>"
-  echo "  arxws github issue create  --repo o/r  --title \"...\" [--body \"...\"] [--label <l>] [--assignee <login>]"
-  echo "  arxws github issue update  --repo o/r  <number> <field> <value>"
-  echo "  arxws github issue comment --repo o/r  <number> \"text\""
+  echo "  arxys github issue list    --repo o/r  [--state open|closed|all] [--label <l>] [--mine]"
+  echo "  arxys github issue show    --repo o/r  <number>"
+  echo "  arxys github issue create  --repo o/r  --title \"...\" [--body \"...\"] [--label <l>] [--assignee <login>]"
+  echo "  arxys github issue update  --repo o/r  <number> <field> <value>"
+  echo "  arxys github issue comment --repo o/r  <number> \"text\""
   echo ""
   bold "REPO:"
-  echo "  arxws github repo info     --repo owner/repo"
-  echo "  arxws github repo list     --org <org>"
-  echo "  arxws github repo commits  --repo o/r  [--branch <branch>] [--limit <n>]"
-  echo "  arxws github repo search   <query>  [--limit <n>]"
+  echo "  arxys github repo info     --repo owner/repo"
+  echo "  arxys github repo list     --org <org>"
+  echo "  arxys github repo commits  --repo o/r  [--branch <branch>] [--limit <n>]"
+  echo "  arxys github repo search   <query>  [--limit <n>]"
   echo ""
   bold "USER:"
-  echo "  arxws github user search  <query>  [--limit <n>]"
+  echo "  arxys github user search  <query>  [--limit <n>]"
   echo ""
   bold "FLAGS:"
   echo "  --repo <owner/repo>   Required on all commands except 'repo list'."
   echo "                        Owner is derived from this — no GITHUB_OWNER env var needed."
   echo ""
-  bold "ENV (.env.arxws):"
+  bold "ENV (.env.arxys):"
   echo "  GITHUB_TOKEN=ghp_xxxx   # PAT with repo scope — only GitHub env var needed"
   echo ""
   bold "EXAMPLES:"
-  echo "  arxws github pr list --repo acme-corp/backend"
-  echo "  arxws github pr list --repo acme-corp/backend --mine"
-  echo "  arxws github pr show 42 --repo acme-corp/backend"
-  echo "  arxws github pr files 42 --repo acme-corp/backend"
-  echo "  arxws github pr status 42 --repo acme-corp/backend"
-  echo "  arxws github pr create --repo acme-corp/backend --title \"Fix login bug\" --head fix/login"
-  echo "  arxws github pr review 42 --repo acme-corp/backend --action approve"
-  echo "  arxws github issue list --repo acme-corp/frontend --label bug"
-  echo "  arxws github issue create --repo acme-corp/frontend --title \"Dark mode flicker\" --label bug"
-  echo "  arxws github issue comment 12 --repo acme-corp/frontend \"Reproduced on Safari 17\""
-  echo "  arxws github repo info --repo acme-corp/backend"
-  echo "  arxws github repo list --org acme-corp"
-  echo "  arxws github repo commits --repo acme-corp/backend --branch main --limit 10"
-  echo "  arxws github repo search \"acme corp cli\""
-  echo "  arxws github user search \"acme-corp\""
+  echo "  arxys github pr list --repo acme-corp/backend"
+  echo "  arxys github pr list --repo acme-corp/backend --mine"
+  echo "  arxys github pr show 42 --repo acme-corp/backend"
+  echo "  arxys github pr files 42 --repo acme-corp/backend"
+  echo "  arxys github pr status 42 --repo acme-corp/backend"
+  echo "  arxys github pr create --repo acme-corp/backend --title \"Fix login bug\" --head fix/login"
+  echo "  arxys github pr review 42 --repo acme-corp/backend --action approve"
+  echo "  arxys github issue list --repo acme-corp/frontend --label bug"
+  echo "  arxys github issue create --repo acme-corp/frontend --title \"Dark mode flicker\" --label bug"
+  echo "  arxys github issue comment 12 --repo acme-corp/frontend \"Reproduced on Safari 17\""
+  echo "  arxys github repo info --repo acme-corp/backend"
+  echo "  arxys github repo list --org acme-corp"
+  echo "  arxys github repo commits --repo acme-corp/backend --branch main --limit 10"
+  echo "  arxys github repo search \"acme corp cli\""
+  echo "  arxys github user search \"acme-corp\""
   echo ""
 }
 
@@ -231,7 +231,7 @@ _dispatch_notion() {
       local _alias_lower="${_DB_OVERRIDE,,}"
       local _ALIAS_VAL="${_NOTION_DB_ALIASES[$_alias_lower]:-}"
       if [[ -z "$_ALIAS_VAL" ]]; then
-        die "DB alias '${_DB_OVERRIDE}' not found. Run 'arxws notion db list' to see available aliases."
+        die "DB alias '${_DB_OVERRIDE}' not found. Run 'arxys notion db list' to see available aliases."
       fi
       NOTION_DATABASE_ID="$_ALIAS_VAL"
     fi
@@ -305,60 +305,60 @@ _dispatch_notion() {
       case "$verb" in
         list) cmd_workflow_list ;;
         show)
-          [[ $# -lt 1 ]] && die "Usage: arxws notion workflow show <name>"
+          [[ $# -lt 1 ]] && die "Usage: arxys notion workflow show <name>"
           cmd_workflow_show "$1" ;;
         *) die "Unknown verb '${verb}' for 'workflow'. Try: list, show" ;;
       esac
       ;;
 
     help|--help|-h) _notion_help ;;
-    *) die "Unknown resource '${noun}'. Run 'arxws notion help' for usage." ;;
+    *) die "Unknown resource '${noun}'. Run 'arxys notion help' for usage." ;;
   esac
 }
 
 _notion_help() {
   echo ""
-  bold "arxws notion — Notion task management CLI"
+  bold "arxys notion — Notion task management CLI"
   echo ""
   bold "USAGE:"
-  echo "  arxws notion [--db <id|alias>] <resource> <action> [target] [flags]"
+  echo "  arxys notion [--db <id|alias>] <resource> <action> [target] [flags]"
   echo ""
   bold "OPTIONS:"
   echo "  --db <id|alias>    Override NOTION_DATABASE_ID for this run"
   echo ""
   bold "TASK:"
-  echo "  arxws notion task list                              List tasks grouped by Status"
-  echo "  arxws notion task list --filter <prop> <value>      Filter by property"
-  echo "  arxws notion task list --sort <prop> [asc|desc]     Sort by property"
-  echo "  arxws notion task list --mine                       Tasks assigned to you"
-  echo "  arxws notion task show <No.>                        Show task details and comments"
-  echo "  arxws notion task create --title \"...\" [--prop val] Create a new task"
-  echo "  arxws notion task create --title \"...\" --self        Create and assign to yourself"
-  echo "  arxws notion task update <No.> <property> <value>   Update a task property"
-  echo "  arxws notion task assign <No.> <email[,email,...]>  Set assignees (replaces all)"
-  echo "  arxws notion task assign <No.> --self               Assign yourself"
-  echo "  arxws notion task unassign <No.> <email[,email,..]> Remove specific assignees"
+  echo "  arxys notion task list                              List tasks grouped by Status"
+  echo "  arxys notion task list --filter <prop> <value>      Filter by property"
+  echo "  arxys notion task list --sort <prop> [asc|desc]     Sort by property"
+  echo "  arxys notion task list --mine                       Tasks assigned to you"
+  echo "  arxys notion task show <No.>                        Show task details and comments"
+  echo "  arxys notion task create --title \"...\" [--prop val] Create a new task"
+  echo "  arxys notion task create --title \"...\" --self        Create and assign to yourself"
+  echo "  arxys notion task update <No.> <property> <value>   Update a task property"
+  echo "  arxys notion task assign <No.> <email[,email,...]>  Set assignees (replaces all)"
+  echo "  arxys notion task assign <No.> --self               Assign yourself"
+  echo "  arxys notion task unassign <No.> <email[,email,..]> Remove specific assignees"
   echo ""
   bold "COMMENT:"
-  echo "  arxws notion comment add <No.> \"text\"               Add a comment"
+  echo "  arxys notion comment add <No.> \"text\"               Add a comment"
   echo ""
   bold "USER:"
-  echo "  arxws notion user list                              List workspace members"
+  echo "  arxys notion user list                              List workspace members"
   echo ""
   bold "DB:"
-  echo "  arxws notion db list                                List DB aliases"
-  echo "  arxws notion db bootstrap                           Provision DB with standard schema"
-  echo "  arxws notion db bootstrap --milestone <uuid>        Provision with Milestone relation"
-  echo "  arxws notion db bootstrap --help                    Show bootstrap details"
+  echo "  arxys notion db list                                List DB aliases"
+  echo "  arxys notion db bootstrap                           Provision DB with standard schema"
+  echo "  arxys notion db bootstrap --milestone <uuid>        Provision with Milestone relation"
+  echo "  arxys notion db bootstrap --help                    Show bootstrap details"
   echo ""
   bold "REFERENCE:"
-  echo "  arxws notion rules                                  Display workspace best practices"
-  echo "  arxws notion workflow list                          List available workflows"
-  echo "  arxws notion workflow show <name>                   Show a specific workflow"
+  echo "  arxys notion rules                                  Display workspace best practices"
+  echo "  arxys notion workflow list                          List available workflows"
+  echo "  arxys notion workflow show <name>                   Show a specific workflow"
   echo "    Names: development, review, testing, deployment, planning,"
   echo "           task-creation, bug-reporting, hotfix, release, onboarding"
   echo ""
-  bold "ENV (.env.arxws):"
+  bold "ENV (.env.arxys):"
   echo "  NOTION_API_KEY=secret_xxx"
   echo "  NOTION_DATABASE_ID=<uuid>"
   echo "  NOTION_DATABASE_ID:VENTURES=<uuid>             # alias: --db ventures"
@@ -367,15 +367,15 @@ _notion_help() {
   echo "  NOTION_USER_EMAIL=ako@example.com              # used for --self and --mine"
   echo ""
   bold "EXAMPLES:"
-  echo "  arxws notion task list"
-  echo "  arxws notion task list --mine"
-  echo "  arxws notion task show 42"
-  echo "  arxws notion task create --title \"Fix login bug\" --self"
-  echo "  arxws notion task update 42 Status \"In Review\""
-  echo "  arxws notion comment add 42 \"Blocked on design review\""
-  echo "  arxws notion user list"
-  echo "  arxws notion --db ventures task list"
-  echo "  arxws notion workflow show development"
+  echo "  arxys notion task list"
+  echo "  arxys notion task list --mine"
+  echo "  arxys notion task show 42"
+  echo "  arxys notion task create --title \"Fix login bug\" --self"
+  echo "  arxys notion task update 42 Status \"In Review\""
+  echo "  arxys notion comment add 42 \"Blocked on design review\""
+  echo "  arxys notion user list"
+  echo "  arxys notion --db ventures task list"
+  echo "  arxys notion workflow show development"
   echo ""
 }
 
@@ -389,19 +389,19 @@ case "$TOOL" in
   github) _dispatch_github "$@" ;;
   help|--help|-h)
     echo ""
-    bold "arxws — Arxoft Workspace CLI"
+    bold "arxys — Arxoft Workspace CLI"
     echo ""
     bold "USAGE:"
-    echo "  arxws <tool> <resource> <action> [flags]"
+    echo "  arxys <tool> <resource> <action> [flags]"
     echo ""
     bold "TOOLS:"
-    echo "  arxws notion   Notion task management"
-    echo "  arxws github   GitHub repository management"
+    echo "  arxys notion   Notion task management"
+    echo "  arxys github   GitHub repository management"
     echo ""
-    echo "  Run 'arxws notion help' or 'arxws github help' for tool-specific usage."
+    echo "  Run 'arxys notion help' or 'arxys github help' for tool-specific usage."
     echo ""
     bold "SETUP (Linux / macOS):"
-    echo "  ln -s \"\$(pwd)/arxws\" ~/.local/bin/arxws"
+    echo "  ln -s \"\$(pwd)/arxys\" ~/.local/bin/arxys"
     echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
     echo ""
     bold "SETUP (Windows):"
@@ -413,24 +413,24 @@ case "$TOOL" in
     echo "    or download from https://jqlang.github.io/jq/download/"
     echo ""
     echo "  Option A — add to PATH via System Properties:"
-    echo "    1. Copy arxws.cmd to a folder already on your PATH (e.g. C:\\tools\\)"
+    echo "    1. Copy arxys.cmd to a folder already on your PATH (e.g. C:\\tools\\)"
     echo "       or add the repo directory to PATH:"
     echo "       System Properties → Advanced → Environment Variables"
     echo "       → edit 'Path' under User variables → add the repo folder"
-    echo "    2. Open a new Command Prompt or PowerShell and run:  arxws help"
+    echo "    2. Open a new Command Prompt or PowerShell and run:  arxys help"
     echo ""
     echo "  Option B — PowerShell alias (current user, persists across sessions):"
     echo "    Add to your \$PROFILE:"
-    echo "    Set-Alias arxws C:\\path\\to\\arxws.cmd"
+    echo "    Set-Alias arxys C:\\path\\to\\arxys.cmd"
     echo ""
-    echo "  Note: arxws.cmd auto-detects Git Bash and delegates to the bash script."
+    echo "  Note: arxys.cmd auto-detects Git Bash and delegates to the bash script."
     echo "  If Git Bash is not found in standard locations it falls back to any"
     echo "  'bash' on PATH (e.g. WSL or Cygwin)."
     echo ""
     bold "ENV:"
-    echo "  Place .env.arxws in each project directory (read from CWD at runtime)."
-    echo "  See .env.arxws.example for all available variables."
+    echo "  Place .env.arxys in each project directory (read from CWD at runtime)."
+    echo "  See .env.arxys.example for all available variables."
     echo ""
     ;;
-  *) die "Unknown tool '${TOOL}'. Run 'arxws help' for usage." ;;
+  *) die "Unknown tool '${TOOL}'. Run 'arxys help' for usage." ;;
 esac

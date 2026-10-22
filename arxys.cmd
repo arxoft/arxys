@@ -1,5 +1,5 @@
 @echo off
-:: arxws.cmd — Windows wrapper for the arxws bash script
+:: arxys.cmd — Windows wrapper for the arxys bash script
 :: Runs the script using Git Bash (git-bash.exe or sh.exe from Git for Windows)
 
 setlocal
@@ -43,6 +43,6 @@ set "DRIVE=%UNIX_SCRIPT_DIR:~0,1%"
 set "REST=%UNIX_SCRIPT_DIR:~2%"
 set "UNIX_SCRIPT_DIR=/%DRIVE%/%REST%"
 
-"%GIT_BASH%" --login -i "%UNIX_SCRIPT_DIR%/arxws" %*
+"%GIT_BASH%" --login -i "%UNIX_SCRIPT_DIR%/arxys" %*
 
 exit /b %errorlevel%

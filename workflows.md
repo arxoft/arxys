@@ -1,56 +1,56 @@
 ---
 inclusion: auto
 name: workflows
-description: Agent instructions for arxws CLI, Notion task management, GitHub workflows, and workspace-specific overrides. Activate when the agent is working on tasks, PRs, branches, or anything involving Notion or GitHub.
+description: Agent instructions for arxys CLI, Notion task management, GitHub workflows, and workspace-specific overrides. Activate when the agent is working on tasks, PRs, branches, or anything involving Notion or GitHub.
 ---
 
 # Workspace Workflows & Agent Instructions
 
-This file is the authoritative source for this workspace. For full workflow details, always read fresh from `arxws`:
+This file is the authoritative source for this workspace. For full workflow details, always read fresh from `arxys`:
 
 ```bash
-arxws notion workflow show development
-arxws notion workflow show review
-arxws notion workflow show hotfix
-arxws notion workflow show deployment
-arxws notion workflow show testing
-arxws notion workflow show planning
-arxws notion workflow show release
-arxws notion workflow show task-creation
-arxws notion workflow show bug-reporting
-arxws notion workflow show onboarding
-arxws notion rules
+arxys notion workflow show development
+arxys notion workflow show review
+arxys notion workflow show hotfix
+arxys notion workflow show deployment
+arxys notion workflow show testing
+arxys notion workflow show planning
+arxys notion workflow show release
+arxys notion workflow show task-creation
+arxys notion workflow show bug-reporting
+arxys notion workflow show onboarding
+arxys notion rules
 ```
 
 Any workspace-specific overrides in this file take precedence over what those commands return.
 
 ---
 
-## arxws CLI
+## arxys CLI
 
-`arxws` is the Arxoft Workspace CLI. It wraps Notion task management and GitHub operations into a single terminal interface.
+`arxys` is the Arxoft Workspace CLI. It wraps Notion task management and GitHub operations into a single terminal interface.
 
-**Install location:** symlinked to `~/.local/bin/arxws`  
-**Config:** `.env.arxws` is read from the **current working directory** at runtime — each workspace has its own.
+**Install location:** symlinked to `~/.local/bin/arxys`  
+**Config:** `.env.arxys` is read from the **current working directory** at runtime — each workspace has its own.
 
 ```bash
-arxws notion <resource> <action> [flags]
-arxws github <resource> <action> [flags]
+arxys notion <resource> <action> [flags]
+arxys github <resource> <action> [flags]
 ```
 
 Quick reference:
 ```bash
-arxws notion task list
-arxws notion task show <No.>
-arxws notion task create --title "..." --Status "Backlog" --Priority "Medium"
-arxws notion task update <No.> <property> <value>
-arxws notion comment add <No.> "text"
-arxws notion workflow show <name>
-arxws notion rules
+arxys notion task list
+arxys notion task show <No.>
+arxys notion task create --title "..." --Status "Backlog" --Priority "Medium"
+arxys notion task update <No.> <property> <value>
+arxys notion comment add <No.> "text"
+arxys notion workflow show <name>
+arxys notion rules
 
-arxws github pr list --repo <owner/repo>
-arxws github pr show <number> --repo <owner/repo>
-arxws github issue list --repo <owner/repo>
+arxys github pr list --repo <owner/repo>
+arxys github pr show <number> --repo <owner/repo>
+arxys github issue list --repo <owner/repo>
 ```
 
 ---
@@ -67,11 +67,11 @@ arxws github issue list --repo <owner/repo>
 
 ## Notion Databases
 
-<!-- List the DB aliases configured in .env.arxws for this workspace. -->
+<!-- List the DB aliases configured in .env.arxys for this workspace. -->
 
 | Alias | Purpose | Command |
 |-------|---------|---------|
-| _(default)_ | Main task board | `arxws notion task list` |
+| _(default)_ | Main task board | `arxys notion task list` |
 
 ---
 
@@ -118,7 +118,7 @@ A dirty working directory means work is already in progress. That work must be e
 
 ---
 
-## Task Rules (from `arxws notion rules`)
+## Task Rules (from `arxys notion rules`)
 
 | Rule | Guideline |
 |------|-----------|
@@ -138,7 +138,7 @@ A dirty working directory means work is already in progress. That work must be e
 
 ### Branch Naming
 <!-- e.g. Override the default pattern if this project uses a different convention -->
-_Using defaults from `arxws notion workflow show development`._
+_Using defaults from `arxys notion workflow show development`._
 
 ### Status Flow Overrides
 <!-- e.g. If this project skips Pending Acceptance or uses different status names -->
