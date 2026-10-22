@@ -1,0 +1,436 @@
+#!/usr/bin/env bash
+# =============================================================================
+# arxws — Arxoft Workspace CLI
+# =============================================================================
+# Usage:
+#   arxws notion [--db <id|alias>] task    <action> [args]
+#   arxws notion [--db <id|alias>] comment <action> [args]
+#   arxws notion [--db <id|alias>] user    <action>
+#   arxws notion [--db <id|alias>] db      <action>
+#   arxws notion rules
+#   arxws notion workflow list|show <name>
+#   arxws github pr      list|show|create|merge|review [args]
+#   arxws github issue   list|show|create|update|comment [args]
+#   arxws github repo    info|list [args]
+#
+# Setup:
+#   ln -s "$(pwd)/arxws" ~/.local/bin/arxws
+#
+# See README.md for full documentation.
+# =============================================================================
+
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Resolve the real directory of this script, following symlinks
+# ---------------------------------------------------------------------------
+_resolve_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="${dir}/${src}"
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+SCRIPT_DIR="$(_resolve_script_dir)"
+unset -f _resolve_script_dir
+
+LIB_DIR="${SCRIPT_DIR}/lib"
+
+# ---------------------------------------------------------------------------
+# Load shared utilities
+# ---------------------------------------------------------------------------
+# shellcheck source=lib/common.sh
+source "${LIB_DIR}/common.sh"
+
+# ---------------------------------------------------------------------------
+# Config — load .env.arxws from the working directory
+# ---------------------------------------------------------------------------
+ENV_FILE="${PWD}/.env.arxws"
+
+declare -A _NOTION_DB_ALIASES=()
+
+if [[ -f "$ENV_FILE" ]]; then
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _line="${_line%%#*}"
+    _line="${_line//[$'\r']}"
+    [[ -z "${_line// }" ]] && continue
+    _key="${_line%%=*}"
+    _val="${_line#*=}"
+    _key="${_key#"${_key%%[![:space:]]*}"}" ; _key="${_key%"${_key##*[![:space:]]}"}"
+    _val="${_val#"${_val%%[![:space:]]*}"}" ; _val="${_val%"${_val##*[![:space:]]}"}"
+    _val="${_val#\"}" ; _val="${_val%\"}"
+    _val="${_val#\'}" ; _val="${_val%\'}"
+    if [[ "$_key" =~ ^NOTION_DATABASE_ID:(.+)$ ]]; then
+      _alias="${BASH_REMATCH[1],,}"
+      _NOTION_DB_ALIASES["$_alias"]="$_val"
+    elif [[ "$_key" =~ ^NOTION_ || "$_key" =~ ^GITHUB_ ]]; then
+      export "$_key"="$_val"
+    fi
+  done < "$ENV_FILE"
+  unset _line _key _val
+fi
+
+NOTION_API_KEY="${NOTION_API_KEY:-}"
+NOTION_DATABASE_ID="${NOTION_DATABASE_ID:-}"
+NOTION_USER="${NOTION_USER:-}"
+NOTION_USER_EMAIL="${NOTION_USER_EMAIL:-}"
+NOTION_STATUS_PROPERTY_NAME="Status"
+NOTION_TITLE_PROPERTY_NAME="${NOTION_TITLE_PROPERTY_NAME:-Task name}"
+NOTION_VERSION="2022-06-28"
+NOTION_BASE_URL="https://api.notion.com/v1"
+
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
+# ---------------------------------------------------------------------------
+# Dispatch: github
+# ---------------------------------------------------------------------------
+_dispatch_github() {
+  source "${LIB_DIR}/github/common.sh"
+
+  local noun="${1:-help}"; shift || true
+
+  case "$noun" in
+    pr)
+      source "${LIB_DIR}/github/pr.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list)   cmd_pr_list "$@" ;;
+        show)   cmd_pr_show "$@" ;;
+        create) cmd_pr_create "$@" ;;
+        merge)  cmd_pr_merge "$@" ;;
+        review) cmd_pr_review "$@" ;;
+        files)  cmd_pr_files "$@" ;;
+        status) cmd_pr_status "$@" ;;
+        *) die "Unknown verb '${verb}' for 'pr'. Try: list, show, create, merge, review, files, status" ;;
+      esac
+      ;;
+
+    issue)
+      source "${LIB_DIR}/github/issue.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list)    cmd_issue_list "$@" ;;
+        show)    cmd_issue_show "$@" ;;
+        create)  cmd_issue_create "$@" ;;
+        update)  cmd_issue_update "$@" ;;
+        comment) cmd_issue_comment "$@" ;;
+        *) die "Unknown verb '${verb}' for 'issue'. Try: list, show, create, update, comment" ;;
+      esac
+      ;;
+
+    repo)
+      source "${LIB_DIR}/github/repo.sh"
+      local verb="${1:-info}"; shift || true
+      case "$verb" in
+        info)    cmd_repo_info "$@" ;;
+        list)    cmd_repo_list "$@" ;;
+        commits) cmd_repo_commits "$@" ;;
+        search)  cmd_repo_search "$@" ;;
+        *) die "Unknown verb '${verb}' for 'repo'. Try: info, list, commits, search" ;;
+      esac
+      ;;
+
+    user)
+      source "${LIB_DIR}/github/user.sh"
+      local verb="${1:-}"; shift || true
+      case "$verb" in
+        search) cmd_github_user_search "$@" ;;
+        *) die "Unknown verb '${verb}' for 'user'. Try: search" ;;
+      esac
+      ;;
+
+    help|--help|-h) _github_help ;;
+    *) die "Unknown resource '${noun}'. Run 'arxws github help' for usage." ;;
+  esac
+}
+
+_github_help() {
+  echo ""
+  bold "arxws github — GitHub REST API wrapper"
+  echo ""
+  bold "USAGE:"
+  echo "  arxws github <resource> <action> --repo <owner/repo> [flags]"
+  echo ""
+  bold "PR:"
+  echo "  arxws github pr list   --repo o/r  [--state open|closed|all] [--mine]"
+  echo "  arxws github pr show   --repo o/r  <number>"
+  echo "  arxws github pr create --repo o/r  --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft]"
+  echo "  arxws github pr merge  --repo o/r  <number>  [--method merge|squash|rebase]"
+  echo "  arxws github pr review --repo o/r  <number>  --action approve|request-changes|comment [--body \"...\"]"
+  echo "  arxws github pr files  --repo o/r  <number>"
+  echo "  arxws github pr status --repo o/r  <number>"
+  echo ""
+  bold "ISSUE:"
+  echo "  arxws github issue list    --repo o/r  [--state open|closed|all] [--label <l>] [--mine]"
+  echo "  arxws github issue show    --repo o/r  <number>"
+  echo "  arxws github issue create  --repo o/r  --title \"...\" [--body \"...\"] [--label <l>] [--assignee <login>]"
+  echo "  arxws github issue update  --repo o/r  <number> <field> <value>"
+  echo "  arxws github issue comment --repo o/r  <number> \"text\""
+  echo ""
+  bold "REPO:"
+  echo "  arxws github repo info     --repo owner/repo"
+  echo "  arxws github repo list     --org <org>"
+  echo "  arxws github repo commits  --repo o/r  [--branch <branch>] [--limit <n>]"
+  echo "  arxws github repo search   <query>  [--limit <n>]"
+  echo ""
+  bold "USER:"
+  echo "  arxws github user search  <query>  [--limit <n>]"
+  echo ""
+  bold "FLAGS:"
+  echo "  --repo <owner/repo>   Required on all commands except 'repo list'."
+  echo "                        Owner is derived from this — no GITHUB_OWNER env var needed."
+  echo ""
+  bold "ENV (.env.arxws):"
+  echo "  GITHUB_TOKEN=ghp_xxxx   # PAT with repo scope — only GitHub env var needed"
+  echo ""
+  bold "EXAMPLES:"
+  echo "  arxws github pr list --repo acme-corp/backend"
+  echo "  arxws github pr list --repo acme-corp/backend --mine"
+  echo "  arxws github pr show 42 --repo acme-corp/backend"
+  echo "  arxws github pr files 42 --repo acme-corp/backend"
+  echo "  arxws github pr status 42 --repo acme-corp/backend"
+  echo "  arxws github pr create --repo acme-corp/backend --title \"Fix login bug\" --head fix/login"
+  echo "  arxws github pr review 42 --repo acme-corp/backend --action approve"
+  echo "  arxws github issue list --repo acme-corp/frontend --label bug"
+  echo "  arxws github issue create --repo acme-corp/frontend --title \"Dark mode flicker\" --label bug"
+  echo "  arxws github issue comment 12 --repo acme-corp/frontend \"Reproduced on Safari 17\""
+  echo "  arxws github repo info --repo acme-corp/backend"
+  echo "  arxws github repo list --org acme-corp"
+  echo "  arxws github repo commits --repo acme-corp/backend --branch main --limit 10"
+  echo "  arxws github repo search \"acme corp cli\""
+  echo "  arxws github user search \"acme-corp\""
+  echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch: notion
+# ---------------------------------------------------------------------------
+_dispatch_notion() {
+  require_deps
+
+  # --db override must come before the noun
+  local _DB_OVERRIDE=""
+  local -a _REMAINING=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --db)
+        [[ $# -lt 2 ]] && die "--db requires an argument"
+        _DB_OVERRIDE="$2"; shift 2 ;;
+      *) _REMAINING+=("$1"); shift ;;
+    esac
+  done
+  set -- "${_REMAINING[@]+"${_REMAINING[@]}"}"
+  unset _REMAINING
+
+  if [[ -n "$_DB_OVERRIDE" ]]; then
+    if [[ "$_DB_OVERRIDE" =~ ^[0-9a-fA-F-]{32,36}$ ]]; then
+      NOTION_DATABASE_ID="$_DB_OVERRIDE"
+    else
+      local _alias_lower="${_DB_OVERRIDE,,}"
+      local _ALIAS_VAL="${_NOTION_DB_ALIASES[$_alias_lower]:-}"
+      if [[ -z "$_ALIAS_VAL" ]]; then
+        die "DB alias '${_DB_OVERRIDE}' not found. Run 'arxws notion db list' to see available aliases."
+      fi
+      NOTION_DATABASE_ID="$_ALIAS_VAL"
+    fi
+  fi
+  unset _DB_OVERRIDE
+
+  local noun="${1:-help}"; shift || true
+
+  case "$noun" in
+    task)
+      require_env
+      source "${LIB_DIR}/notion/comment.sh"
+      source "${LIB_DIR}/notion/task.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list)     cmd_task_list "$@" ;;
+        show)     cmd_task_show "$@" ;;
+        create)   cmd_task_create "$@" ;;
+        update)   cmd_task_update "$@" ;;
+        assign)   cmd_task_assign "$@" ;;
+        unassign) cmd_task_unassign "$@" ;;
+        *) die "Unknown verb '${verb}' for 'task'. Try: list, show, create, update, assign, unassign" ;;
+      esac
+      ;;
+
+    comment)
+      require_env
+      source "${LIB_DIR}/notion/comment.sh"
+      local verb="${1:-}"; shift || true
+      case "$verb" in
+        add) cmd_comment_add "$@" ;;
+        *)   die "Unknown verb '${verb}' for 'comment'. Try: add" ;;
+      esac
+      ;;
+
+    user)
+      require_env
+      source "${LIB_DIR}/notion/user.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list) cmd_user_list ;;
+        *) die "Unknown verb '${verb}' for 'user'. Try: list" ;;
+      esac
+      ;;
+
+    db)
+      source "${LIB_DIR}/notion/db.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list) cmd_db_list ;;
+        bootstrap)
+          if [[ $# -gt 0 && ( "$1" == "--help" || "$1" == "-h" || "$1" == "help" ) ]]; then
+            cmd_db_bootstrap_help
+          else
+            require_env
+            cmd_db_bootstrap "$@"
+          fi
+          ;;
+        *) die "Unknown verb '${verb}' for 'db'. Try: list, bootstrap" ;;
+      esac
+      ;;
+
+    rules)
+      source "${LIB_DIR}/notion/rules.sh"
+      cmd_rules
+      ;;
+
+    workflow)
+      source "${LIB_DIR}/notion/workflow.sh"
+      local verb="${1:-list}"; shift || true
+      case "$verb" in
+        list) cmd_workflow_list ;;
+        show)
+          [[ $# -lt 1 ]] && die "Usage: arxws notion workflow show <name>"
+          cmd_workflow_show "$1" ;;
+        *) die "Unknown verb '${verb}' for 'workflow'. Try: list, show" ;;
+      esac
+      ;;
+
+    help|--help|-h) _notion_help ;;
+    *) die "Unknown resource '${noun}'. Run 'arxws notion help' for usage." ;;
+  esac
+}
+
+_notion_help() {
+  echo ""
+  bold "arxws notion — Notion task management CLI"
+  echo ""
+  bold "USAGE:"
+  echo "  arxws notion [--db <id|alias>] <resource> <action> [target] [flags]"
+  echo ""
+  bold "OPTIONS:"
+  echo "  --db <id|alias>    Override NOTION_DATABASE_ID for this run"
+  echo ""
+  bold "TASK:"
+  echo "  arxws notion task list                              List tasks grouped by Status"
+  echo "  arxws notion task list --filter <prop> <value>      Filter by property"
+  echo "  arxws notion task list --sort <prop> [asc|desc]     Sort by property"
+  echo "  arxws notion task list --mine                       Tasks assigned to you"
+  echo "  arxws notion task show <No.>                        Show task details and comments"
+  echo "  arxws notion task create --title \"...\" [--prop val] Create a new task"
+  echo "  arxws notion task create --title \"...\" --self        Create and assign to yourself"
+  echo "  arxws notion task update <No.> <property> <value>   Update a task property"
+  echo "  arxws notion task assign <No.> <email[,email,...]>  Set assignees (replaces all)"
+  echo "  arxws notion task assign <No.> --self               Assign yourself"
+  echo "  arxws notion task unassign <No.> <email[,email,..]> Remove specific assignees"
+  echo ""
+  bold "COMMENT:"
+  echo "  arxws notion comment add <No.> \"text\"               Add a comment"
+  echo ""
+  bold "USER:"
+  echo "  arxws notion user list                              List workspace members"
+  echo ""
+  bold "DB:"
+  echo "  arxws notion db list                                List DB aliases"
+  echo "  arxws notion db bootstrap                           Provision DB with standard schema"
+  echo "  arxws notion db bootstrap --milestone <uuid>        Provision with Milestone relation"
+  echo "  arxws notion db bootstrap --help                    Show bootstrap details"
+  echo ""
+  bold "REFERENCE:"
+  echo "  arxws notion rules                                  Display workspace best practices"
+  echo "  arxws notion workflow list                          List available workflows"
+  echo "  arxws notion workflow show <name>                   Show a specific workflow"
+  echo "    Names: development, review, testing, deployment, planning,"
+  echo "           task-creation, bug-reporting, hotfix, release, onboarding"
+  echo ""
+  bold "ENV (.env.arxws):"
+  echo "  NOTION_API_KEY=secret_xxx"
+  echo "  NOTION_DATABASE_ID=<uuid>"
+  echo "  NOTION_DATABASE_ID:VENTURES=<uuid>             # alias: --db ventures"
+  echo "  NOTION_TITLE_PROPERTY_NAME=Title               # default: Task name"
+  echo "  NOTION_USER=ako                                # prefixes all comments"
+  echo "  NOTION_USER_EMAIL=ako@example.com              # used for --self and --mine"
+  echo ""
+  bold "EXAMPLES:"
+  echo "  arxws notion task list"
+  echo "  arxws notion task list --mine"
+  echo "  arxws notion task show 42"
+  echo "  arxws notion task create --title \"Fix login bug\" --self"
+  echo "  arxws notion task update 42 Status \"In Review\""
+  echo "  arxws notion comment add 42 \"Blocked on design review\""
+  echo "  arxws notion user list"
+  echo "  arxws notion --db ventures task list"
+  echo "  arxws notion workflow show development"
+  echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+TOOL="${1:-help}"; shift || true
+
+case "$TOOL" in
+  notion) _dispatch_notion "$@" ;;
+  github) _dispatch_github "$@" ;;
+  help|--help|-h)
+    echo ""
+    bold "arxws — Arxoft Workspace CLI"
+    echo ""
+    bold "USAGE:"
+    echo "  arxws <tool> <resource> <action> [flags]"
+    echo ""
+    bold "TOOLS:"
+    echo "  arxws notion   Notion task management"
+    echo "  arxws github   GitHub repository management"
+    echo ""
+    echo "  Run 'arxws notion help' or 'arxws github help' for tool-specific usage."
+    echo ""
+    bold "SETUP (Linux / macOS):"
+    echo "  ln -s \"\$(pwd)/arxws\" ~/.local/bin/arxws"
+    echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+    echo ""
+    bold "SETUP (Windows):"
+    echo "  Requires Git for Windows — https://git-scm.com/download/win"
+    echo "  Requires jq — install with any of:"
+    echo "    winget install jqlang.jq"
+    echo "    choco install jq"
+    echo "    scoop install jq"
+    echo "    or download from https://jqlang.github.io/jq/download/"
+    echo ""
+    echo "  Option A — add to PATH via System Properties:"
+    echo "    1. Copy arxws.cmd to a folder already on your PATH (e.g. C:\\tools\\)"
+    echo "       or add the repo directory to PATH:"
+    echo "       System Properties → Advanced → Environment Variables"
+    echo "       → edit 'Path' under User variables → add the repo folder"
+    echo "    2. Open a new Command Prompt or PowerShell and run:  arxws help"
+    echo ""
+    echo "  Option B — PowerShell alias (current user, persists across sessions):"
+    echo "    Add to your \$PROFILE:"
+    echo "    Set-Alias arxws C:\\path\\to\\arxws.cmd"
+    echo ""
+    echo "  Note: arxws.cmd auto-detects Git Bash and delegates to the bash script."
+    echo "  If Git Bash is not found in standard locations it falls back to any"
+    echo "  'bash' on PATH (e.g. WSL or Cygwin)."
+    echo ""
+    bold "ENV:"
+    echo "  Place .env.arxws in each project directory (read from CWD at runtime)."
+    echo "  See .env.arxws.example for all available variables."
+    echo ""
+    ;;
+  *) die "Unknown tool '${TOOL}'. Run 'arxws help' for usage." ;;
+esac
