@@ -103,7 +103,8 @@ _dispatch_github() {
         review) cmd_pr_review "$@" ;;
         files)  cmd_pr_files "$@" ;;
         status) cmd_pr_status "$@" ;;
-        *) die "Unknown verb '${verb}' for 'pr'. Try: list, show, create, merge, review, files, status" ;;
+        base-check) cmd_pr_base_check "$@" ;;
+        *) die "Unknown verb '${verb}' for 'pr'. Try: list, show, create, merge, review, files, status, base-check" ;;
       esac
       ;;
 
@@ -156,11 +157,12 @@ _github_help() {
   bold "PR:"
   echo "  arxys github pr list   --repo o/r  [--state open|closed|all] [--mine]"
   echo "  arxys github pr show   --repo o/r  <number>"
-  echo "  arxys github pr create --repo o/r  --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft]"
+  echo "  arxys github pr create --repo o/r  --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft] [--supersedes <number>]"
   echo "  arxys github pr merge  --repo o/r  <number>  [--method merge|squash|rebase]"
   echo "  arxys github pr review --repo o/r  <number>  --action approve|request-changes|comment [--body \"...\"]"
   echo "  arxys github pr files  --repo o/r  <number>"
   echo "  arxys github pr status --repo o/r  <number>"
+  echo "  arxys github pr base-check --repo o/r  --base <branch> --sha <recorded-sha>"
   echo ""
   bold "ISSUE:"
   echo "  arxys github issue list    --repo o/r  [--state open|closed|all] [--label <l>] [--mine]"
@@ -331,6 +333,7 @@ _notion_help() {
   echo "  arxys notion task list --filter <prop> <value>      Filter by property"
   echo "  arxys notion task list --sort <prop> [asc|desc]     Sort by property"
   echo "  arxys notion task list --mine                       Tasks assigned to you"
+  echo "  arxys notion task list --review-queue               Pending Review, sorted by deps + PR number"
   echo "  arxys notion task show <No.>                        Show task details and comments"
   echo "  arxys notion task create --title \"...\" [--prop val] Create a new task"
   echo "  arxys notion task create --title \"...\" --self        Create and assign to yourself"

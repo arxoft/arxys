@@ -124,5 +124,5 @@ notion task update <No.> Status "In Progress"
 
 ## Status Flow
 
-`In Progress → Pending Review → Pending Deployment → Testing → Completed`
+`In Progress → Pending Review → Awaiting Deployment → Testing → Completed`
 (same flow, compressed timeline)

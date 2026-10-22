@@ -4,7 +4,7 @@
 
 > ⛔ Production deployment must only be performed by a human. The AI agent must never execute deployment steps — not SSH, not server restarts, not migrations on the server.
 
-Tasks reach **Pending Deployment** after review passes. This workflow covers what to do before, during, and after deploying to production.
+Tasks reach **Awaiting Deployment** after review passes. This workflow covers what to do before, during, and after deploying to production.
 
 ---
 
@@ -84,5 +84,5 @@ Rollback if necessary, following project infrastructure docs.
 
 ## Status Flow
 
-`Pending Deployment → Testing`  (deployed successfully)
-`Pending Deployment → Up Next`  (deployment failed)
+`Awaiting Deployment → Testing`  (deployed successfully)
+`Awaiting Deployment → Up Next`  (deployment failed)

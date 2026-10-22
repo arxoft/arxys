@@ -4,8 +4,203 @@
 # Requires: lib/common.sh sourced first.
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# _cmd_task_list_review_queue
+# Filter Status = "Pending Review", topologically sort by "Depends on"
+# (dependencies first), tie-break by PR number ascending.
+# Fails loudly on cycles or on a task whose dependency is not yet in
+# Awaiting Deployment or Completed.
+# -----------------------------------------------------------------------------
+_cmd_task_list_review_queue() {
+  info "Fetching Pending Review queue..."
+
+  # 1. Fetch all Pending Review tasks
+  local body result count
+  body=$(jq -n '{filter: {property: "Status", status: {equals: "Pending Review"}}}')
+  result=$(notion_post "/databases/${NOTION_DATABASE_ID}/query" "$body")
+  count=$(echo "$result" | jq '.results | length')
+
+  if [[ "$count" -eq 0 ]]; then
+    yellow "No tasks in Pending Review."
+    return
+  fi
+
+  # Build a map: task_id -> {no, title, pr_number, dep_page_ids[]}
+  # We resolve PR numbers by stripping the URL to the last path segment.
+  local tasks_json
+  tasks_json=$(echo "$result" | jq '[.results[] | {
+    id: .id,
+    no: (.properties | to_entries[] | select(.value.type=="unique_id") | .value.unique_id.number),
+    title: (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("")),
+    pr_url: (.properties["Pull Request"].url // ""),
+    dep_ids: ([(.properties["Depends on"].relation // [])[] | .id])
+  }]')
+
+  # 2. For each task with dependencies, verify the dependency is in
+  #    Awaiting Deployment or Completed. Collect dep task numbers for display.
+  local errors=0
+  local -a ordered_ids=()
+
+  # Build a simple node list for Kahn's algorithm in jq
+  # We only have page IDs for deps; we need to fetch each dep to check its status.
+  local dep_ids_all
+  dep_ids_all=$(echo "$tasks_json" | jq -r '[.[].dep_ids[]] | unique[]')
+
+  # Map of dep page_id -> status (fetch only unique deps)
+  declare -A dep_status_map=()
+  declare -A dep_no_map=()
+  if [[ -n "$dep_ids_all" ]]; then
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      local dep_page dep_st dep_no
+      dep_page=$(notion_get "/pages/${dep_id}")
+      dep_st=$(echo "$dep_page" | jq -r '
+        .properties | to_entries[]
+        | select(.key == "Status")
+        | .value
+        | if .type == "status" then .status.name elif .type == "select" then .select.name else "" end
+      ')
+      dep_no=$(echo "$dep_page" | jq -r '
+        .properties | to_entries[]
+        | select(.value.type == "unique_id")
+        | .value.unique_id.number | tostring
+      ')
+      dep_status_map["$dep_id"]="$dep_st"
+      dep_no_map["$dep_id"]="$dep_no"
+    done <<< "$dep_ids_all"
+  fi
+
+  # 3. Validate dependency statuses and detect cycles via Kahn's algorithm
+  # Build in-degree and adjacency using the dep_ids within the Pending Review set.
+  # Tasks with deps *outside* the set are validated against dep_status_map above.
+
+  # Map page_id -> task index for tasks in queue
+  declare -A id_to_idx=()
+  local n_tasks
+  n_tasks=$(echo "$tasks_json" | jq 'length')
+  for i in $(seq 0 $((n_tasks - 1))); do
+    local tid
+    tid=$(echo "$tasks_json" | jq -r --argjson i "$i" '.[$i].id')
+    id_to_idx["$tid"]=$i
+  done
+
+  # Validate cross-queue deps and build in-degree array
+  declare -a in_degree=()
+  for i in $(seq 0 $((n_tasks - 1))); do
+    in_degree[$i]=0
+  done
+
+  for i in $(seq 0 $((n_tasks - 1))); do
+    local dep_list
+    dep_list=$(echo "$tasks_json" | jq -r --argjson i "$i" '.[$i].dep_ids[]')
+    local task_no
+    task_no=$(echo "$tasks_json" | jq -r --argjson i "$i" '.[$i].no')
+
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+
+      if [[ -v "id_to_idx[$dep_id]" ]]; then
+        # dep is also in Pending Review — contributes to in-degree
+        local dep_idx="${id_to_idx[$dep_id]}"
+        in_degree[$i]=$(( in_degree[$i] + 1 ))
+      else
+        # dep is outside the queue — must be Awaiting Deployment or Completed
+        local dep_st="${dep_status_map[$dep_id]:-}"
+        local dep_no="${dep_no_map[$dep_id]:-$dep_id}"
+        if [[ "$dep_st" != "Awaiting Deployment" && "$dep_st" != "Completed" ]]; then
+          red "ERROR: Task No.${task_no} depends on No.${dep_no} which is in status '${dep_st}' (must be Awaiting Deployment or Completed)."
+          errors=$(( errors + 1 ))
+        fi
+      fi
+    done <<< "$dep_list"
+  done
+
+  [[ "$errors" -gt 0 ]] && die "Review queue blocked: resolve dependency errors above before proceeding."
+
+  # Kahn's topological sort
+  local -a queue=()
+  for i in $(seq 0 $((n_tasks - 1))); do
+    [[ "${in_degree[$i]}" -eq 0 ]] && queue+=("$i")
+  done
+
+  # Sort zero-in-degree nodes by PR number ascending (tie-break)
+  # Extract PR numbers into a helper array for sorting
+  declare -a pr_nums=()
+  for i in $(seq 0 $((n_tasks - 1))); do
+    local pr_url
+    pr_url=$(echo "$tasks_json" | jq -r --argjson i "$i" '.[$i].pr_url')
+    local pr_num=999999
+    if [[ "$pr_url" =~ /([0-9]+)$ ]]; then
+      pr_num="${BASH_REMATCH[1]}"
+    fi
+    pr_nums[$i]=$pr_num
+  done
+
+  # Re-sort initial queue by PR number
+  IFS=$'\n' queue=($(for idx in "${queue[@]}"; do echo "${pr_nums[$idx]} $idx"; done | sort -n | awk '{print $2}'))
+  unset IFS
+
+  local -a sorted_indices=()
+  local visited=0
+
+  while [[ "${#queue[@]}" -gt 0 ]]; do
+    local cur="${queue[0]}"
+    queue=("${queue[@]:1}")
+    sorted_indices+=("$cur")
+    (( visited++ ))
+
+    # Find tasks that depended on cur
+    local cur_id
+    cur_id=$(echo "$tasks_json" | jq -r --argjson c "$cur" '.[$c].id')
+    local -a newly_free=()
+
+    for j in $(seq 0 $((n_tasks - 1))); do
+      local j_deps
+      j_deps=$(echo "$tasks_json" | jq -r --argjson jj "$j" '.[$jj].dep_ids[]' 2>/dev/null || true)
+      while IFS= read -r dep_id; do
+        [[ "$dep_id" == "$cur_id" ]] || continue
+        in_degree[$j]=$(( in_degree[$j] - 1 ))
+        if [[ "${in_degree[$j]}" -eq 0 ]]; then
+          newly_free+=("$j")
+        fi
+      done <<< "$j_deps"
+    done
+
+    # Sort newly free by PR number and append
+    if [[ "${#newly_free[@]}" -gt 0 ]]; then
+      IFS=$'\n' newly_free=($(for idx in "${newly_free[@]}"; do echo "${pr_nums[$idx]} $idx"; done | sort -n | awk '{print $2}'))
+      unset IFS
+      queue+=("${newly_free[@]}")
+    fi
+  done
+
+  if [[ "$visited" -lt "$n_tasks" ]]; then
+    die "ERROR: Cycle detected in Pending Review dependencies. Resolve the cycle before proceeding."
+  fi
+
+  # 4. Display sorted queue
+  echo ""
+  bold "── Pending Review (review order) ──────────────────"
+  for idx in "${sorted_indices[@]}"; do
+    local no title pr_url pr_disp dep_count
+    no=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].no')
+    title=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].title | if length > 70 then .[0:70] + "..." else . end')
+    pr_url=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].pr_url')
+    dep_count=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].dep_ids | length')
+    pr_disp=""
+    if [[ "$pr_url" =~ /([0-9]+)$ ]]; then
+      pr_disp="  PR #${BASH_REMATCH[1]}"
+    fi
+    local dep_note=""
+    [[ "$dep_count" -gt 0 ]] && dep_note="  [deps: ${dep_count}]"
+    printf "  No.%-6s %s%s%s\n" "${no}" "${title}" "${pr_disp}" "${dep_note}"
+  done
+  echo ""
+  dim "Total: ${n_tasks} task(s) in Pending Review"
+}
+
 cmd_task_list() {
-  local filter_prop="" filter_val="" sort_prop="" sort_dir="ascending" mine=0
+  local filter_prop="" filter_val="" sort_prop="" sort_dir="ascending" mine=0 review_queue=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -13,6 +208,8 @@ cmd_task_list() {
       --mine)
         [[ -z "${NOTION_USER_EMAIL:-}" ]] && die "--mine requires NOTION_USER_EMAIL in .env.notion"
         mine=1; shift ;;
+      --review-queue)
+        review_queue=1; shift ;;
       --sort)
         sort_prop="$2"; shift 2
         if [[ $# -gt 0 && "$1" =~ ^(asc|desc|ascending|descending)$ ]]; then
@@ -22,6 +219,12 @@ cmd_task_list() {
       *) die "Unknown option: $1" ;;
     esac
   done
+
+  # --review-queue: filter Pending Review, topological sort by Depends on, tie-break by PR number
+  if [[ "$review_queue" -eq 1 ]]; then
+    _cmd_task_list_review_queue
+    return
+  fi
 
   if [[ "$mine" -eq 1 ]]; then
     filter_prop="Assignee"

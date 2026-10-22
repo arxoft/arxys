@@ -45,14 +45,14 @@ cmd_db_bootstrap() {
   info "Bootstrapping database ${NOTION_DATABASE_ID}..."
 
   local props
-  props=$(jq -n --arg mid "$milestone_db_id" '{
+  props=$(jq -n --arg mid "$milestone_db_id" --arg dbid "$NOTION_DATABASE_ID" '{
     "ID":           {"unique_id": {"prefix": null}},
     "Status": {
       "status": {
         "options": [
           {"name": "Triage"}, {"name": "Backlog"}, {"name": "Up Next"},
-          {"name": "In Progress"}, {"name": "In Review"}, {"name": "In QA"},
-          {"name": "Ready to Deploy"}, {"name": "UAT"},
+          {"name": "In Progress"}, {"name": "Pending Review"},
+          {"name": "Awaiting Deployment"}, {"name": "UAT"},
           {"name": "Completed"}, {"name": "Cancelled"}
         ],
         "groups": [
@@ -71,17 +71,20 @@ cmd_db_bootstrap() {
     "Due Date":     {"date": {}},
     "Tags": {
       "multi_select": {"options": [
-        {"name": "coding"}, {"name": "need info"}, {"name": "issue persists"},
-        {"name": "reviewed"}, {"name": "on hold"}, {"name": "awaiting details"},
-        {"name": "cancelled"}, {"name": "has migration"}, {"name": "has env change"}
+        {"name": "coding"}, {"name": "need-info"}, {"name": "issue-persists"},
+        {"name": "reviewed"}, {"name": "pending-merge"}, {"name": "on-hold"},
+        {"name": "awaiting-details"}, {"name": "cancelled"},
+        {"name": "has-migration"}, {"name": "has-env-change"}
       ]}
     },
-    "Notes":        {"rich_text": {}},
-    "URL":          {"url": {}},
-    "Effort":       {"number": {"format": "number"}},
-    "Git Branch":   {"rich_text": {}},
-    "Pull Request": {"url": {}},
-    "Milestone":    {"relation": {"database_id": $mid, "single_property": {}}}
+    "Notes":         {"rich_text": {}},
+    "URL":           {"url": {}},
+    "Effort":        {"number": {"format": "number"}},
+    "Git Branch":    {"rich_text": {}},
+    "Pull Request":  {"url": {}},
+    "Review round":  {"number": {"format": "number"}},
+    "Depends on":    {"relation": {"database_id": $dbid, "single_property": {}}},
+    "Milestone":     {"relation": {"database_id": $mid, "single_property": {}}}
   }')
 
   local body result
@@ -112,19 +115,23 @@ cmd_db_bootstrap_help() {
   echo "  Uses PATCH /databases — additive only, existing properties are preserved."
   echo ""
   bold "PROPERTIES CONFIGURED:"
-  printf "  %-14s %-12s %s\n" "ID"           "unique_id"    "Auto-incrementing task number"
-  printf "  %-14s %-12s %s\n" "Status"       "status"       "Triage · Backlog · Up Next · In Progress · In Review"
-  printf "  %-14s %-12s %s\n" ""             ""             "In QA · Ready to Deploy · UAT · Completed · Cancelled"
-  printf "  %-14s %-12s %s\n" "Priority"     "select"       "Critical · High · Medium · Low"
-  printf "  %-14s %-12s %s\n" "Assignee"     "people"       "Team member(s)"
-  printf "  %-14s %-12s %s\n" "Due Date"     "date"         "Target completion date"
-  printf "  %-14s %-12s %s\n" "Tags"         "multi_select" "has-migration · has-env-change · ..."
-  printf "  %-14s %-12s %s\n" "Notes"        "rich_text"    "Free-form notes"
-  printf "  %-14s %-12s %s\n" "URL"          "url"          "Reference link"
-  printf "  %-14s %-12s %s\n" "Effort"       "number"       "Fibonacci effort points (1 2 3 5 8 13)"
-  printf "  %-14s %-12s %s\n" "Git Branch"   "rich_text"    "Associated git branch name"
-  printf "  %-14s %-12s %s\n" "Pull Request" "url"          "GitHub pull request URL"
-  printf "  %-14s %-12s %s\n" "Milestone"    "relation"     "Parent milestone task (self-relation by default)"
+  printf "  %-16s %-12s %s\n" "ID"            "unique_id"    "Auto-incrementing task number"
+  printf "  %-16s %-12s %s\n" "Status"        "status"       "Triage · Backlog · Up Next · In Progress · Pending Review"
+  printf "  %-16s %-12s %s\n" ""              ""             "Awaiting Deployment · UAT · Completed · Cancelled"
+  printf "  %-16s %-12s %s\n" "Priority"      "select"       "Critical · High · Medium · Low"
+  printf "  %-16s %-12s %s\n" "Assignee"      "people"       "Team member(s)"
+  printf "  %-16s %-12s %s\n" "Due Date"      "date"         "Target completion date"
+  printf "  %-16s %-12s %s\n" "Tags"          "multi_select" "coding · need-info · issue-persists · reviewed"
+  printf "  %-16s %-12s %s\n" ""              ""             "pending-merge · on-hold · awaiting-details"
+  printf "  %-16s %-12s %s\n" ""              ""             "cancelled · has-migration · has-env-change"
+  printf "  %-16s %-12s %s\n" "Notes"         "rich_text"    "Free-form notes"
+  printf "  %-16s %-12s %s\n" "URL"           "url"          "Reference link"
+  printf "  %-16s %-12s %s\n" "Effort"        "number"       "Fibonacci effort points (1 2 3 5 8 13)"
+  printf "  %-16s %-12s %s\n" "Git Branch"    "rich_text"    "Associated git branch name"
+  printf "  %-16s %-12s %s\n" "Pull Request"  "url"          "GitHub pull request URL"
+  printf "  %-16s %-12s %s\n" "Review round"  "number"       "Current review round (default 1)"
+  printf "  %-16s %-12s %s\n" "Depends on"    "relation"     "Blocking task(s) in same DB (self-relation)"
+  printf "  %-16s %-12s %s\n" "Milestone"     "relation"     "Parent milestone task (self-relation by default)"
   echo ""
   bold "PRE-REQUISITES:"
   echo ""

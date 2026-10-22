@@ -29,8 +29,15 @@ notion workflow show <name>         — detailed workflow
 ## Status Flow (Full)
 
 ```
-Backlog → Up Next → In Progress → Pending Review → Pending Deployment → Testing → Pending Acceptance → Completed
+Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → UAT → Completed
 ```
+
+Key transitions:
+
+- **Pending Review → Awaiting Deployment** — reviewer approves; review branch pushed, review PR opened.
+- **Pending Review → Up Next** — issues found; developer bumps Review round and resubmits.
+- **Awaiting Deployment → UAT** — review PR merged; `pending-merge` tag cleared by whoever merges.
+- **UAT → Completed** — change accepted in UAT.
 
 Hotfixes follow the same flow on a compressed timeline, skipping the backlog.
 

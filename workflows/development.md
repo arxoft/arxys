@@ -68,6 +68,15 @@
 - Then: `notion task update <No.> Status "Pending Review"`
 - Remove the 'coding' tag
 
+**Resubmission after Issues Found**: if the task was previously reviewed and returned with `issue-persists`, increment the `Review round` property before moving back to Pending Review:
+
+```bash
+arxys notion task update <No.> "Review round" <incremented_value>
+arxys notion task update <No.> Status "Pending Review"
+```
+
+The reviewer will cut a new `review/<No.>-r<n>` branch for the new round. Do not reuse or reopen the old review branch.
+
 ## 9. Switch Back to Root Branch
 
 - Switch back to the root branch in all repos: `git checkout <root-branch>`

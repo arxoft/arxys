@@ -133,32 +133,45 @@ cmd_pr_show() {
 
 cmd_pr_create() {
   require_github_env
-  local title="" head="" base="main" body="" draft=0
+  local title="" head="" base="main" body="" draft=0 supersedes=""
   local -a remaining=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --repo)   remaining+=("$1" "$2"); shift 2 ;;
-      --title)  title="$2";  shift 2 ;;
-      --head)   head="$2";   shift 2 ;;
-      --base)   base="$2";   shift 2 ;;
-      --body)   body="$2";   shift 2 ;;
-      --draft)  draft=1;     shift   ;;
-      *)        remaining+=("$1"); shift ;;
+      --repo)        remaining+=("$1" "$2"); shift 2 ;;
+      --title)       title="$2";      shift 2 ;;
+      --head)        head="$2";       shift 2 ;;
+      --base)        base="$2";       shift 2 ;;
+      --body)        body="$2";       shift 2 ;;
+      --draft)       draft=1;         shift   ;;
+      --supersedes)  supersedes="$2"; shift 2 ;;
+      *)             remaining+=("$1"); shift ;;
     esac
   done
 
   parse_repo_flag "${remaining[@]+"${remaining[@]}"}"
   require_github_repo
-  [[ -z "$title" ]] && die "Usage: github pr create --repo owner/repo --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft]"
+  [[ -z "$title" ]] && die "Usage: github pr create --repo owner/repo --title \"...\" --head <branch> [--base <branch>] [--body \"...\"] [--draft] [--supersedes <number>]"
   [[ -z "$head"  ]] && die "--head <branch> is required"
+
+  # Prepend cross-reference to body if --supersedes is given
+  local full_body="$body"
+  if [[ -n "$supersedes" ]]; then
+    if [[ -n "$full_body" ]]; then
+      full_body="Supersedes #${supersedes}.
+
+${full_body}"
+    else
+      full_body="Supersedes #${supersedes}."
+    fi
+  fi
 
   local payload
   payload=$(jq -n \
     --arg title "$title" \
     --arg head  "$head"  \
     --arg base  "$base"  \
-    --arg body  "$body"  \
+    --arg body  "$full_body" \
     --argjson draft "$draft" \
     '{title: $title, head: $head, base: $base, body: $body, draft: ($draft == 1)}')
 
@@ -166,9 +179,25 @@ cmd_pr_create() {
   local result
   result=$(github_post "/repos/${_GH_OWNER}/${_GH_REPO}/pulls" "$payload")
 
+  local new_number new_url
+  new_number=$(echo "$result" | jq -r '.number')
+  new_url=$(echo "$result" | jq -r '.html_url')
+
   green "✓ Pull request created!"
-  echo "  #$(echo "$result" | jq -r '.number')  $(echo "$result" | jq -r '.title')"
-  echo "  $(echo "$result" | jq -r '.html_url')"
+  echo "  #${new_number}  $(echo "$result" | jq -r '.title')"
+  echo "  ${new_url}"
+
+  # Close the superseded PR with a back-reference comment
+  if [[ -n "$supersedes" ]]; then
+    info "Closing superseded PR #${supersedes} with cross-reference..."
+    local close_comment
+    close_comment="Superseded by #${new_number}. See ${new_url}"
+    github_post "/repos/${_GH_OWNER}/${_GH_REPO}/issues/${supersedes}/comments" \
+      "$(jq -n --arg b "$close_comment" '{body: $b}')" > /dev/null
+    github_patch "/repos/${_GH_OWNER}/${_GH_REPO}/pulls/${supersedes}" \
+      '{"state":"closed"}' > /dev/null
+    green "✓ Closed PR #${supersedes} and added cross-reference."
+  fi
 }
 
 cmd_pr_merge() {
@@ -352,4 +381,76 @@ cmd_pr_status() {
   fi
 
   echo ""
+}
+
+cmd_pr_base_check() {
+  # Usage: github pr base-check --repo o/r --base <branch> --sha <recorded-sha>
+  # Verifies the recorded base SHA is still an ancestor of origin/<base>.
+  # Reports OK or STALE and exits non-zero on STALE.
+  require_github_env
+  local base_branch="" recorded_sha=""
+  local -a remaining=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)  remaining+=("$1" "$2"); shift 2 ;;
+      --base)  base_branch="$2";       shift 2 ;;
+      --sha)   recorded_sha="$2";      shift 2 ;;
+      *)       remaining+=("$1"); shift ;;
+    esac
+  done
+
+  parse_repo_flag "${remaining[@]+"${remaining[@]}"}"
+  require_github_repo
+  [[ -z "$base_branch"   ]] && die "--base <branch> is required"
+  [[ -z "$recorded_sha"  ]] && die "--sha <recorded-sha> is required"
+
+  info "Checking if ${recorded_sha} is an ancestor of origin/${base_branch} in ${_GH_OWNER}/${_GH_REPO}..."
+
+  # Use the GitHub compare API: base=recorded_sha, head=base_branch
+  # If the recorded SHA is an ancestor, the comparison status will be
+  # "behind", "identical", or "diverged" with ahead_by >= 0.
+  # If it is NOT an ancestor (history was rewritten/force-pushed), the API
+  # returns status "diverged" with behind_by > 0 and no merge_base_commit
+  # pointing to recorded_sha, or returns an error.
+  #
+  # The reliable check: compare base_branch..recorded_sha — if ahead_by == 0
+  # the recorded SHA is at or behind the current tip, so it IS an ancestor.
+  # We use commits/{sha} to verify the SHA exists first.
+
+  # Step 1: verify the SHA exists
+  local sha_check
+  sha_check=$(github_get "/repos/${_GH_OWNER}/${_GH_REPO}/commits/${recorded_sha}" 2>/dev/null || true)
+  if [[ -z "$sha_check" ]] || echo "$sha_check" | jq -e '.message' > /dev/null 2>&1; then
+    red "STALE: recorded SHA ${recorded_sha} does not exist in ${_GH_OWNER}/${_GH_REPO}."
+    red "The target branch history may have been rewritten. Re-cut the review branch."
+    return 1
+  fi
+
+  # Step 2: compare recorded_sha (base) to base_branch (head)
+  # If recorded_sha is an ancestor, base_branch is "ahead" of it (status = ahead/identical).
+  local compare
+  compare=$(github_get "/repos/${_GH_OWNER}/${_GH_REPO}/compare/${recorded_sha}...${base_branch}")
+  local status
+  status=$(echo "$compare" | jq -r '.status')
+  # status values: ahead | behind | identical | diverged
+  # "ahead" or "identical" → recorded_sha is an ancestor of base_branch ✓
+  # "behind" or "diverged" → recorded_sha is NOT a strict ancestor (stale)
+
+  case "$status" in
+    ahead|identical)
+      green "OK: ${recorded_sha} is still an ancestor of origin/${base_branch}. Review branch is current."
+      ;;
+    behind|diverged)
+      local behind_by
+      behind_by=$(echo "$compare" | jq -r '.behind_by // "unknown"')
+      red "STALE: origin/${base_branch} has moved on. The recorded base SHA ${recorded_sha} is ${behind_by} commit(s) behind."
+      red "Re-cut the review branch: git fetch origin && git switch -c review/<...> origin/${base_branch}"
+      return 1
+      ;;
+    *)
+      yellow "WARNING: unexpected compare status '${status}'. Treat as STALE and verify manually."
+      return 1
+      ;;
+  esac
 }
