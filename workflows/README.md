@@ -29,7 +29,7 @@ notion workflow show <name>         — detailed workflow
 ## Status Flow (Full)
 
 ```
-Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → UAT → Completed
+Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → UAT → Completed
 ```
 
 Key transitions:

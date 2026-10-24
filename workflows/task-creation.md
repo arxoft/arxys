@@ -15,9 +15,12 @@ notion task create --title "Short descriptive title here" --Status "Backlog" --P
 Title rules (from RULES.md):
 - 9–12 words maximum.
 - Describes the work clearly — no filler like "we need to", "please", "I want to".
+- Do **not** type the task number. The CLI stamps `(No.)` onto the title right after the page is created, because the number does not exist until then.
 
-**Good:** `Fix login redirect loop on expired sessions`
+**Good:** `Fix login redirect loop on expired sessions` → stored as `(34) Fix login redirect loop on expired sessions`
 **Bad:** `We need to fix the issue where users get stuck in a redirect loop`
+
+The number is in the title so that relation properties and @-mentions — which search titles, never the ID column — find the task when you type a number you already remember. The CLI hides the prefix wherever it prints a number beside the title. If a rename drops it, `notion task fix-titles` shows what drifted and `--apply` repairs it.
 
 ---
 

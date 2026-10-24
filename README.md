@@ -106,17 +106,20 @@ arxys notion [--db <id|alias>] <resource> <action> [target] [flags]
 
 | Command | Description |
 |---|---|
-| `arxys notion task list` | List all tasks grouped by Status |
+| `arxys notion task list` | List all tasks grouped by Status (Icebox excluded) |
+| `arxys notion task list --icebox` | List only Icebox — parked work kept out of the backlog |
 | `arxys notion task list --filter <prop> <value>` | Filter tasks by property value |
 | `arxys notion task list --sort <prop> [asc\|desc]` | Sort task list |
 | `arxys notion task list --mine` | Tasks assigned to you |
 | `arxys notion task show <No.>` | Show all properties + comments for a task |
-| `arxys notion task create --title "..." [--prop val]` | Create a new task |
+| `arxys notion task create --title "..." [--prop val]` | Create a new task; the CLI stamps the `(No.)` prefix |
 | `arxys notion task create --title "..." --self` | Create and assign to yourself |
 | `arxys notion task update <No.> <property> <value>` | Update a task property |
 | `arxys notion task assign <No.> <email[,email,...]>` | Set assignees (replaces all) |
 | `arxys notion task assign <No.> --self` | Assign yourself |
 | `arxys notion task unassign <No.> <email[,email,...]>` | Remove specific assignees |
+| `arxys notion task fix-titles` | Report titles missing their `(No.)` prefix |
+| `arxys notion task fix-titles --apply` | Repair those titles |
 
 ### comment
 
@@ -209,6 +212,7 @@ arxys notion task update 42 Effort 5
 arxys notion task assign 42 user@example.com,other@example.com
 arxys notion task assign 42 --self
 arxys notion task unassign 42 user@example.com
+arxys notion task fix-titles --apply
 
 # notion — comments
 arxys notion comment add 42 "Blocked on design review"

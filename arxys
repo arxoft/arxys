@@ -249,13 +249,14 @@ _dispatch_notion() {
       source "${LIB_DIR}/notion/task.sh"
       local verb="${1:-list}"; shift || true
       case "$verb" in
-        list)     cmd_task_list "$@" ;;
-        show)     cmd_task_show "$@" ;;
-        create)   cmd_task_create "$@" ;;
-        update)   cmd_task_update "$@" ;;
-        assign)   cmd_task_assign "$@" ;;
-        unassign) cmd_task_unassign "$@" ;;
-        *) die "Unknown verb '${verb}' for 'task'. Try: list, show, create, update, assign, unassign" ;;
+        list)        cmd_task_list "$@" ;;
+        show)        cmd_task_show "$@" ;;
+        create)      cmd_task_create "$@" ;;
+        update)      cmd_task_update "$@" ;;
+        assign)      cmd_task_assign "$@" ;;
+        unassign)    cmd_task_unassign "$@" ;;
+        fix-titles)  cmd_task_fix_titles "$@" ;;
+        *) die "Unknown verb '${verb}' for 'task'. Try: list, show, create, update, assign, unassign, fix-titles" ;;
       esac
       ;;
 
@@ -332,7 +333,8 @@ _notion_help() {
   echo "  arxys notion task list                              List tasks grouped by Status"
   echo "  arxys notion task list --filter <prop> <value>      Filter by property"
   echo "  arxys notion task list --sort <prop> [asc|desc]     Sort by property"
-  echo "  arxys notion task list --mine                       Tasks assigned to you"
+  echo "  arxys notion task list --mine                       Tasks assigned to you (Icebox excluded)"
+  echo "  arxys notion task list --icebox                     Show only Icebox work"
   echo "  arxys notion task list --review-queue               Pending Review, sorted by deps + PR number"
   echo "  arxys notion task show <No.>                        Show task details and comments"
   echo "  arxys notion task create --title \"...\" [--prop val] Create a new task"
@@ -341,6 +343,7 @@ _notion_help() {
   echo "  arxys notion task assign <No.> <email[,email,...]>  Set assignees (replaces all)"
   echo "  arxys notion task assign <No.> --self               Assign yourself"
   echo "  arxys notion task unassign <No.> <email[,email,..]> Remove specific assignees"
+  echo "  arxys notion task fix-titles [--apply]               Repair (No.) prefixes lost to renames"
   echo ""
   bold "COMMENT:"
   echo "  arxys notion comment add <No.> \"text\"               Add a comment"

@@ -78,7 +78,7 @@ arxys github issue list --repo <owner/repo>
 ## Status Flow
 
 ```
-Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed
+Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed
 ```
 
 Hotfixes follow the same flow on a compressed timeline, starting directly at In Progress.

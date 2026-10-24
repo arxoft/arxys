@@ -50,8 +50,8 @@ cmd_db_bootstrap() {
     "Status": {
       "status": {
         "options": [
-          {"name": "Triage"}, {"name": "Backlog"}, {"name": "Up Next"},
-          {"name": "In Progress"}, {"name": "Pending Review"},
+          {"name": "Planning"}, {"name": "Backlog"}, {"name": "Icebox"},
+          {"name": "Up Next"}, {"name": "In Progress"}, {"name": "Pending Review"},
           {"name": "Awaiting Deployment"}, {"name": "UAT"},
           {"name": "Completed"}, {"name": "Cancelled"}
         ],
@@ -116,8 +116,9 @@ cmd_db_bootstrap_help() {
   echo ""
   bold "PROPERTIES CONFIGURED:"
   printf "  %-16s %-12s %s\n" "ID"            "unique_id"    "Auto-incrementing task number"
-  printf "  %-16s %-12s %s\n" "Status"        "status"       "Triage · Backlog · Up Next · In Progress · Pending Review"
-  printf "  %-16s %-12s %s\n" ""              ""             "Awaiting Deployment · UAT · Completed · Cancelled"
+  printf "  %-16s %-12s %s\n" "Status"        "status"       "Planning · Backlog · Icebox · Up Next"
+  printf "  %-16s %-12s %s\n" ""              ""             "In Progress · Pending Review · Awaiting Deployment"
+  printf "  %-16s %-12s %s\n" ""              ""             "UAT · Completed · Cancelled"
   printf "  %-16s %-12s %s\n" "Priority"      "select"       "Critical · High · Medium · Low"
   printf "  %-16s %-12s %s\n" "Assignee"      "people"       "Team member(s)"
   printf "  %-16s %-12s %s\n" "Due Date"      "date"         "Target completion date"
@@ -147,6 +148,10 @@ cmd_db_bootstrap_help() {
   echo ""
   bold "NOTES:"
   echo "  Safe to re-run — existing options are preserved, new ones are added."
+  echo "  Additive only: renaming an option here leaves the old name on an existing"
+  echo "  DB and re-running bootstrap adds the new one beside it. Rename in the"
+  echo "  Notion UI instead, which moves the tasks with it."
   echo "  Views (board, table) must be configured manually in Notion."
+  echo "  Icebox is parked work with no commitment to revisit; Backlog is still groomed."
   echo ""
 }

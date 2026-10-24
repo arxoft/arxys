@@ -9,11 +9,12 @@ These are workspace best practices for managing tasks in Notion via this CLI.
 - **Keep titles concise** — 9–12 words maximum.
 - Titles should describe the work clearly without being a full sentence.
 - Avoid filler words like "we need to", "please", "I want to".
+- **Titles begin with the task number in parentheses** — `(34) Fix login redirect loop on expired sessions`. Notion's relation pickers and @-mentions search titles only, so the number has to live in the title to be findable there. The CLI owns this prefix: `task create` stamps it after the page exists, so write the words and never the number yourself. Repair renames that dropped it with `task fix-titles --apply`.
 
 **Good:**
 ```
-Fix login redirect loop on expired sessions
-Add CSV export to the reports dashboard
+(34) Fix login redirect loop on expired sessions
+(35) Add CSV export to the reports dashboard
 ```
 
 **Bad:**
@@ -103,6 +104,17 @@ notion task update 42 Status "In Review"
 
 ---
 
+## Icebox
+
+Icebox is parked work — kept in the database on purpose, out of the active backlog, with no commitment to revisit.
+
+- **Ignore Icebox tasks completely.** Do not list, plan, estimate, review, groom, or pick them up, and do not count them in status summaries.
+- Work on Icebox content only when a human names it explicitly — `task list --icebox`, or a `task show <No.>` they pointed you at.
+- `task list` and `task list --mine` drop Icebox rows from their results, so parked work cannot leak into a board view by accident. `task list --icebox` is the supported way to look at parked work.
+- Parking a task **into** Icebox is routine and reversible; follow the usual comment-before-status-change rule. Pulling one **out** of Icebox and back into Backlog is a human decision — ask.
+
+---
+
 ## Effort Points
 
 Every task should have an **Effort** property set using Fibonacci points:
@@ -178,10 +190,12 @@ The CLI will display the current Duration value when you update this field as a 
 | Rule          | Guideline                                                                 |
 |---------------|---------------------------------------------------------------------------|
 | Title length  | 9–12 words max                                                            |
+| Title prefix  | `(<No.>)` at the start — stamped by `task create`, repaired by `task fix-titles --apply` |
 | Description   | Always fill in Notes/Description — include what, why, acceptance criteria |
 | Relevant docs | Reference any related specs, designs, or docs in the description          |
 | Comments      | Keep short; split long thoughts into multiple comments; use rich text formatting; always post full task URL when referencing another task |
 | Status change | Always comment before updating the Status property                        |
+| Icebox        | Parked work — ignore unless the human names it; `task list` excludes it     |
 | Tags          | Add `has-migration` or `has-env-change` when applicable                   |
 | Effort        | Set Fibonacci points (1–13); 13 = too big, consider splitting             |
 | Duration      | HH:MM format; always INCREMENT — never replace; confirm with human each time |

@@ -4,6 +4,14 @@
 # Requires: lib/common.sh sourced first.
 # =============================================================================
 
+# Every task title carries its own number, e.g. "(34) Fix login redirect loop".
+# Relation pickers and @-mentions only search titles, so the number has to live
+# there. The CLI owns the prefix; humans own the words after it.
+_NO_PREFIX_RE='^\([0-9]+\) *'
+
+title_without_no() { sed -E "s/${_NO_PREFIX_RE}//" <<< "$1"; }
+title_with_no()    { printf '(%s) %s' "$1" "$(title_without_no "$2")"; }
+
 # -----------------------------------------------------------------------------
 # _cmd_task_list_review_queue
 # Filter Status = "Pending Review", topologically sort by "Depends on"
@@ -184,7 +192,7 @@ _cmd_task_list_review_queue() {
   for idx in "${sorted_indices[@]}"; do
     local no title pr_url pr_disp dep_count
     no=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].no')
-    title=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].title | if length > 70 then .[0:70] + "..." else . end')
+    title=$(echo "$tasks_json" | jq -r --argjson i "$idx" --arg re "$_NO_PREFIX_RE" '.[$i].title | sub($re; "") | if length > 70 then .[0:70] + "..." else . end')
     pr_url=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].pr_url')
     dep_count=$(echo "$tasks_json" | jq -r --argjson i "$idx" '.[$i].dep_ids | length')
     pr_disp=""
@@ -201,6 +209,8 @@ _cmd_task_list_review_queue() {
 
 cmd_task_list() {
   local filter_prop="" filter_val="" sort_prop="" sort_dir="ascending" mine=0 review_queue=0
+  # Icebox is parked work: absent from a default listing, and shown alone on request.
+  local icebox="hide"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -208,6 +218,8 @@ cmd_task_list() {
       --mine)
         [[ -z "${NOTION_USER_EMAIL:-}" ]] && die "--mine requires NOTION_USER_EMAIL in .env.notion"
         mine=1; shift ;;
+      --icebox)
+        icebox="only"; shift ;;
       --review-queue)
         review_queue=1; shift ;;
       --sort)
@@ -284,10 +296,33 @@ cmd_task_list() {
   info "Fetching tasks..."
   local result count
   result=$(notion_post "/databases/${NOTION_DATABASE_ID}/query" "$body")
+
+  # Parked work stays out of sight unless the caller names the Status property,
+  # in which case they have already chosen what they want to see.
+  local status_named=0
+  [[ "${filter_prop,,}" == "${NOTION_STATUS_PROPERTY_NAME,,}" ]] && status_named=1
+
+  local icebox_mode="$icebox"
+  [[ "$icebox_mode" == "hide" && "$status_named" -eq 1 ]] && icebox_mode="off"
+
+  if [[ "$icebox_mode" != "off" ]]; then
+    result=$(echo "$result" | jq --arg grp "$NOTION_STATUS_PROPERTY_NAME" --arg mode "$icebox_mode" '
+      def stage: ((.properties | to_entries[] | select(.key==$grp) | .value
+                    | if   .type=="status" then .status.name
+                      elif .type=="select" then .select.name
+                      else null end) // "");
+      .results |= map(select( if $mode == "only" then stage == "Icebox"
+                              else stage != "Icebox" end ))')
+  fi
+
   count=$(echo "$result" | jq '.results | length')
 
   if [[ "$count" -eq 0 ]]; then
-    yellow "No tasks found."
+    if [[ "$icebox_mode" == "only" ]]; then
+      yellow "Nothing in the Icebox."
+    else
+      yellow "No tasks found."
+    fi
     return
   fi
 
@@ -306,19 +341,19 @@ cmd_task_list() {
 
   if [[ -z "$statuses" ]]; then
     yellow "No '${NOTION_STATUS_PROPERTY_NAME}' property found — listing flat:"
-    echo "$result" | jq -r '
+    echo "$result" | jq -r --arg re "$_NO_PREFIX_RE" '
       .results[] |
       "  No." +
       (.properties | to_entries[] | select(.value.type=="unique_id") | .value.unique_id.number | tostring) +
       "  " +
-      (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | if length > 80 then .[0:80] + "..." else . end)'
+      (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "") | if length > 80 then .[0:80] + "..." else . end)'
     return
   fi
 
   while IFS= read -r status; do
     [[ -z "$status" ]] && continue
     local group
-    group=$(echo "$result" | jq -r --arg s "$status" --arg grp "$NOTION_STATUS_PROPERTY_NAME" '
+    group=$(echo "$result" | jq -r --arg s "$status" --arg grp "$NOTION_STATUS_PROPERTY_NAME" --arg re "$_NO_PREFIX_RE" '
       .results[]
       | select(
           (.properties | to_entries[] | select(.key==$grp) | .value
@@ -330,7 +365,7 @@ cmd_task_list() {
       | "  No." +
         (.properties | to_entries[] | select(.value.type=="unique_id") | .value.unique_id.number | tostring) +
         "  " +
-        (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | if length > 80 then .[0:80] + "..." else . end)
+        (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "") | if length > 80 then .[0:80] + "..." else . end)
     ')
     if [[ -n "$group" ]]; then
       echo ""
@@ -340,7 +375,7 @@ cmd_task_list() {
   done <<< "$statuses"
 
   local no_stage
-  no_stage=$(echo "$result" | jq -r --arg grp "$NOTION_STATUS_PROPERTY_NAME" '
+  no_stage=$(echo "$result" | jq -r --arg grp "$NOTION_STATUS_PROPERTY_NAME" --arg re "$_NO_PREFIX_RE" '
     .results[]
     | select(
         (.properties | to_entries[] | select(.key==$grp) | .value
@@ -352,7 +387,7 @@ cmd_task_list() {
     | "  No." +
       (.properties | to_entries[] | select(.value.type=="unique_id") | .value.unique_id.number | tostring) +
       "  " +
-      (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | if length > 80 then .[0:80] + "..." else . end)
+      (.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "") | if length > 80 then .[0:80] + "..." else . end)
   ' 2>/dev/null || true)
 
   if [[ -n "$no_stage" ]]; then
@@ -363,20 +398,28 @@ cmd_task_list() {
 
   echo ""
   dim "Total: $count tasks"
+  [[ "$icebox_mode" == "hide" ]] && dim "  Icebox work is excluded here — see 'task list --icebox'."
 }
 
 cmd_task_show() {
   local no="$1"
   info "Fetching task No. ${no}..."
 
-  local page_id page
+  local page_id page title
   page_id=$(resolve_page_id "$no")
   page=$(notion_get "/pages/${page_id}")
+  title=$(echo "$page" | jq -r --arg re "$_NO_PREFIX_RE" '[.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "")] | join(" ")')
 
   echo ""
-  bold "══════════════════════════════════════════════════"
-  bold " Task No. ${no}"
-  bold "══════════════════════════════════════════════════"
+  local heading=" Task No. ${no}"
+  [[ -n "$title" ]] && heading="${heading} — ${title}"
+  local bar_width=$(( ${#heading} + 2 ))
+  (( bar_width < 50 )) && bar_width=50
+  local bar
+  bar=$(printf '═%.0s' $(seq 1 "$bar_width"))
+  bold "$bar"
+  bold "$heading"
+  bold "$bar"
   echo ""
   bold "Properties:"
 
@@ -461,7 +504,7 @@ cmd_task_create() {
     done
   fi
 
-  local body result new_id url
+  local body result new_id page_uuid url final_title
   body=$(jq -n --arg db "$NOTION_DATABASE_ID" --argjson props "$props" \
     '{parent: {database_id: $db}, properties: $props}')
 
@@ -472,11 +515,88 @@ cmd_task_create() {
     | select(.value.type=="unique_id")
     | .value.unique_id.number | tostring
   ')
+  page_uuid=$(echo "$result" | jq -r '.id')
   url=$(echo "$result" | jq -r '.url')
+
+  # The number only exists once the page does, so stamping it is a second write.
+  final_title="$title"
+  if [[ -n "$new_id" ]]; then
+    final_title=$(title_with_no "$new_id" "$title")
+    if [[ "$final_title" != "$title" ]]; then
+      local tbody
+      tbody=$(jq -n --arg tprop "$NOTION_TITLE_PROPERTY_NAME" --arg t "$final_title" \
+        '{properties: {($tprop): {title: [{type:"text",text:{content:$t}}]}}}')
+      notion_patch "/pages/${page_uuid}" "$tbody" > /dev/null
+    fi
+  fi
 
   green "✓ Task created!"
   [[ -n "$new_id" ]] && echo "  No.  : $new_id"
+  echo "  Title: ${final_title}"
   echo "  URL  : $url"
+}
+
+# -----------------------------------------------------------------------------
+# Repair the (No.) prefix on every title. Titles are editable by anyone, so
+# renames drop it; this makes the convention self-healing. Dry-run unless --apply.
+# -----------------------------------------------------------------------------
+cmd_task_fix_titles() {
+  local apply=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --apply) apply=1; shift ;;
+      *) die "Unknown option: $1" ;;
+    esac
+  done
+
+  info "Scanning titles for the (No.) prefix..."
+
+  local cursor="" page checked=0 drifted=0
+  while :; do
+    if [[ -z "$cursor" ]]; then
+      page=$(notion_post "/databases/${NOTION_DATABASE_ID}/query" '{}')
+    else
+      page=$(notion_post "/databases/${NOTION_DATABASE_ID}/query" \
+        "$(jq -n --arg c "$cursor" '{start_cursor: $c}')")
+    fi
+
+    local n i pid pno ptitle want
+    n=$(echo "$page" | jq '.results | length')
+    for ((i=0; i<n; i++)); do
+      pid=$(echo "$page" | jq -r ".results[$i].id")
+      pno=$(echo "$page" | jq -r ".results[$i].properties | to_entries[] | select(.value.type==\"unique_id\") | .value.unique_id.number | tostring")
+      ptitle=$(echo "$page" | jq -r ".results[$i].properties | to_entries[] | select(.value.type==\"title\") | .value.title | map(.plain_text) | join(\"\")")
+      [[ -z "$pid" || -z "$pno" || "$pno" == "null" ]] && continue
+      checked=$((checked + 1))
+
+      want=$(title_with_no "$pno" "$ptitle")
+      [[ "$want" == "$ptitle" ]] && continue
+
+      if [[ "$apply" -eq 1 ]]; then
+        notion_patch "/pages/${pid}" \
+          "$(jq -n --arg tprop "$NOTION_TITLE_PROPERTY_NAME" --arg t "$want" \
+            '{properties: {($tprop): {title: [{type:"text",text:{content:$t}}]}}}')" > /dev/null
+        printf "  %s No.%-7s %s\n" "$(green 'fixed')" "$pno" "$want"
+      else
+        printf "  %s No.%-7s %s\n" "$(yellow 'drift')" "$pno" "$want"
+      fi
+      drifted=$((drifted + 1))
+    done
+
+    cursor=$(echo "$page" | jq -r '.next_cursor // ""')
+    [[ "$cursor" == "null" || -z "$cursor" ]] && break
+  done
+
+  echo ""
+  if [[ "$drifted" -eq 0 ]]; then
+    green "✓ All ${checked} title(s) already carry their number."
+  elif [[ "$apply" -eq 1 ]]; then
+    green "✓ Repaired ${drifted} of ${checked} title(s)."
+  else
+    yellow "${drifted} of ${checked} title(s) need the prefix."
+    dim "  Re-run with --apply to write."
+  fi
+  echo ""
 }
 
 cmd_task_update() {

@@ -10,12 +10,14 @@ This team follows **Extreme Programming + Kanban** with a simplified lifecycle. 
 
 ## 1. Backlog Health (Continuous)
 
-The backlog is kept ready at all times, not groomed in batches. Any task in **Backlog** should meet these standards before it can move to **Up Next**:
+Work is shaped in **Planning**, and only moves to **Backlog** once it meets these standards — a task in **Backlog** is ready to be pulled, by definition:
 
 - Title is 9–12 words, clear intent — see `notion workflow show task-creation`
 - Description answers: what, why, acceptance criteria
 - Effort points are set (Fibonacci 1–13)
 - Linked to a milestone where applicable
+
+Shaping a task — writing its acceptance criteria, sizing it, splitting it out of an epic — is what **Planning** is for. Moving a task from Planning to Backlog is the moment you are asserting it needs nothing further before someone can start.
 
 ```bash
 notion task list --filter Status "Backlog"
@@ -116,4 +118,4 @@ notion task list --filter "Assigned To" "developer@example.com"
 
 ## Status Flow
 
-`Backlog → Up Next`
+`Planning → Backlog → Up Next`
