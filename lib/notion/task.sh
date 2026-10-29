@@ -628,6 +628,13 @@ cmd_task_update() {
     audit_text="Status → **${value}**"
     [[ -n "$old_status" ]] && audit_text="Status: ~~${old_status}~~ → **${value}**"
     cmd_comment_add "$no" "$audit_text" "$page_id"
+
+    # Slack notification
+    local _task_title _task_url
+    _task_title=$(echo "$page" | jq -r --arg re "$_NO_PREFIX_RE" \
+      '[.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "")] | join(" ")')
+    _task_url=$(echo "$page" | jq -r '.url // ""')
+    slack_notify_task_status "$no" "$_task_title" "${old_status:-?}" "$value" "$_task_url"
   fi
 
   body=$(jq -n --arg p "$real_prop" --argjson pb "$prop_body" '{properties: {($p): $pb}}')
@@ -667,6 +674,21 @@ cmd_task_assign() {
 
   notion_patch "/pages/${page_id}" "$body" > /dev/null
   green "✓ Assigned '${prop_name}' on task No. ${no} → ${handles_input}"
+
+  # Slack notification — notify each assignee individually
+  local _task_title _task_url
+  _task_title=$(echo "$page" | jq -r --arg re "$_NO_PREFIX_RE" \
+    '[.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "")] | join(" ")')
+  _task_url=$(echo "$page" | jq -r '.url // ""')
+
+  IFS=',' read -ra _notify_emails <<< "$handles_input"
+  for _raw_email in "${_notify_emails[@]}"; do
+    local _email
+    _email="${_raw_email#"${_raw_email%%[![:space:]]*}"}"
+    _email="${_email%"${_email##*[![:space:]]}"}"
+    slack_notify_task_assigned "$no" "$_task_title" "$_email" "$_email" "$_task_url"
+  done
+  unset _notify_emails _raw_email _email _task_title _task_url
 }
 
 cmd_task_unassign() {

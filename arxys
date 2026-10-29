@@ -14,7 +14,7 @@
 #   arxys github repo    info|list [args]
 #
 # Setup:
-#   ln -s "$(pwd)/arxys" ~/.local/bin/arxys
+#   bash install.sh
 #
 # See README.md for full documentation.
 # =============================================================================
@@ -406,32 +406,12 @@ case "$TOOL" in
     echo ""
     echo "  Run 'arxys notion help' or 'arxys github help' for tool-specific usage."
     echo ""
-    bold "SETUP (Linux / macOS):"
-    echo "  ln -s \"\$(pwd)/arxys\" ~/.local/bin/arxys"
-    echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+    bold "SETUP:"
+    echo "  From the repo root, run:"
     echo ""
-    bold "SETUP (Windows):"
-    echo "  Requires Git for Windows — https://git-scm.com/download/win"
-    echo "  Requires jq — install with any of:"
-    echo "    winget install jqlang.jq"
-    echo "    choco install jq"
-    echo "    scoop install jq"
-    echo "    or download from https://jqlang.github.io/jq/download/"
+    echo "    bash install.sh"
     echo ""
-    echo "  Option A — add to PATH via System Properties:"
-    echo "    1. Copy arxys.cmd to a folder already on your PATH (e.g. C:\\tools\\)"
-    echo "       or add the repo directory to PATH:"
-    echo "       System Properties → Advanced → Environment Variables"
-    echo "       → edit 'Path' under User variables → add the repo folder"
-    echo "    2. Open a new Command Prompt or PowerShell and run:  arxys help"
-    echo ""
-    echo "  Option B — PowerShell alias (current user, persists across sessions):"
-    echo "    Add to your \$PROFILE:"
-    echo "    Set-Alias arxys C:\\path\\to\\arxys.cmd"
-    echo ""
-    echo "  Note: arxys.cmd auto-detects Git Bash and delegates to the bash script."
-    echo "  If Git Bash is not found in standard locations it falls back to any"
-    echo "  'bash' on PATH (e.g. WSL or Cygwin)."
+    echo "  This creates ~/.local/bin, symlinks arxys into it, and adds it to PATH."
     echo ""
     bold "ENV:"
     echo "  Place .env.arxys in each project directory (read from CWD at runtime)."

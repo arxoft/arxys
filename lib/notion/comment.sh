@@ -81,4 +81,21 @@ print(json.dumps(parse(sys.argv[1])))
   result=$(notion_post "/comments" "$body")
   cid=$(echo "$result" | jq -r '.id')
   green "✓ Comment added to task No. ${no} (id: ${cid})"
+
+  # Slack notification — skip audit comments added by cmd_task_update
+  # (they start with "Status:" and are system-generated, not human comments)
+  local _display_text="${text#"(${NOTION_USER:-}) "}"
+  if [[ "$_display_text" != Status:* ]]; then
+    local _page_url=""
+    if [[ -n "$page_id" ]]; then
+      local _page
+      _page=$(notion_get "/pages/${page_id}")
+      _page_url=$(echo "$_page" | jq -r '.url // ""')
+      local _task_title
+      _task_title=$(echo "$_page" | jq -r --arg re '^\([0-9]+\) *' \
+        '[.properties | to_entries[] | select(.value.type=="title") | .value.title | map(.plain_text) | join("") | sub($re; "")] | join(" ")')
+      slack_notify_comment "$no" "$_task_title" "$_display_text" "$_page_url"
+    fi
+  fi
+  unset _display_text _page_url _page _task_title
 }

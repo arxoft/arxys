@@ -187,6 +187,9 @@ ${full_body}"
   echo "  #${new_number}  $(echo "$result" | jq -r '.title')"
   echo "  ${new_url}"
 
+  # Slack notification
+  slack_notify_pr_created "$new_number" "$title" "${_GH_OWNER}/${_GH_REPO}" "$new_url"
+
   # Close the superseded PR with a back-reference comment
   if [[ -n "$supersedes" ]]; then
     info "Closing superseded PR #${supersedes} with cross-reference..."
@@ -221,8 +224,17 @@ cmd_pr_merge() {
   payload=$(jq -n --arg m "$method" '{merge_method: $m}')
 
   info "Merging PR #${number} (${_GH_OWNER}/${_GH_REPO}, method: ${method})..."
+  local pr_data
+  pr_data=$(github_get "/repos/${_GH_OWNER}/${_GH_REPO}/pulls/${number}")
+  local pr_title pr_url
+  pr_title=$(echo "$pr_data" | jq -r '.title')
+  pr_url=$(echo "$pr_data"   | jq -r '.html_url')
+
   github_put "/repos/${_GH_OWNER}/${_GH_REPO}/pulls/${number}/merge" "$payload" > /dev/null
   green "✓ PR #${number} merged."
+
+  # Slack notification
+  slack_notify_pr_merged "$number" "$pr_title" "${_GH_OWNER}/${_GH_REPO}" "$pr_url"
 }
 
 cmd_pr_review() {
