@@ -29,7 +29,6 @@ export function Ventures() {
     try {
       await api.ventures.create({
         id: form.id, display_name: form.display_name,
-        slack_bot_token:  form.slack_bot_token  || undefined,
         slack_channel_id: form.slack_channel_id || undefined,
       })
       dialogRef.current?.close()
@@ -64,7 +63,7 @@ export function Ventures() {
           <div className="row">
             <h3>{v.display_name}</h3>
             <span className="badge">{v.id}</span>
-            {v.slack_channel_id && <span className="badge" style={{ color: 'var(--success)' }}>Slack ✓</span>}
+            {v.has_slack_token ? <span className="badge" style={{ color: 'var(--success)' }}>Slack ✓</span> : null}
             <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12 }}>→</span>
           </div>
           <p style={{ marginTop: 6, color: 'var(--muted)', fontSize: 12 }}>

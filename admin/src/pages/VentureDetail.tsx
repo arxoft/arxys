@@ -2,6 +2,34 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, type Venture, type Workspace, type Member, type VentureMember, type WorkspaceMember } from '../api'
 
+function SlackTestButton({ ventureId }: { ventureId: string }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
+  const [err,   setErr]   = useState('')
+
+  async function send() {
+    setState('sending')
+    try {
+      await api.ventures.slackTest(ventureId)
+      setState('ok')
+      setTimeout(() => setState('idle'), 3000)
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Error')
+      setState('error')
+      setTimeout(() => setState('idle'), 4000)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button style={{ fontSize: 12 }} disabled={state === 'sending'} onClick={send}>
+        {state === 'sending' ? 'Sending…' : '🔔 Send test message'}
+      </button>
+      {state === 'ok'    && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--success)' }}>✓ Message sent</span>}
+      {state === 'error' && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--danger)' }}>{err}</span>}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Inline editable field
 // ---------------------------------------------------------------------------
@@ -250,12 +278,21 @@ export function VentureDetail() {
       {/* ── Venture settings ── */}
       <SectionHeader title="Settings" />
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
-        <Field label="Slack bot token" value={venture.slack_bot_token ?? ''} type="password"
+        <Field label="Slack bot token" value={venture.has_slack_token ? '••••••••' : ''} type="password"
           placeholder="xoxb-..."
-          onSave={async () => { /* future: PATCH venture */ }} />
+          onSave={async (v) => {
+            await api.ventures.update(id!, { slack_bot_token: v })
+            setVenture(p => p ? { ...p, has_slack_token: v ? 1 : 0 } : p)
+          }} />
         <Field label="Slack channel ID" value={venture.slack_channel_id ?? ''}
           placeholder="C0XXXXXXX"
-          onSave={async () => { /* future: PATCH venture */ }} />
+          onSave={async (v) => {
+            await api.ventures.update(id!, { slack_channel_id: v })
+            setVenture(p => p ? { ...p, slack_channel_id: v } : p)
+          }} />
+        {venture.has_slack_token && venture.slack_channel_id && (
+          <SlackTestButton ventureId={id!} />
+        )}
       </div>
 
       {/* ── Workspaces ── */}

@@ -47,9 +47,66 @@ adminRoutes.use('*', async (c, next) => {
 
 adminRoutes.get('/ventures', async (c) => {
   const rows = await c.env.DB
-    .prepare('SELECT id, display_name, slack_channel_id, created_at FROM ventures')
+    .prepare(`SELECT id, display_name, slack_channel_id, created_at,
+              CASE WHEN slack_bot_token IS NOT NULL AND slack_bot_token != '' THEN 1 ELSE 0 END as has_slack_token
+              FROM ventures`)
     .all()
   return c.json(rows.results)
+})
+
+adminRoutes.post('/ventures/:venture_id/slack-test', async (c) => {
+  const ventureId = c.req.param('venture_id')
+
+  const venture = await c.env.DB
+    .prepare('SELECT slack_bot_token, slack_channel_id FROM ventures WHERE id = ?')
+    .bind(ventureId)
+    .first<{ slack_bot_token: string | null; slack_channel_id: string | null }>()
+
+  if (!venture) return c.json({ error: 'Venture not found' }, 404)
+  if (!venture.slack_bot_token)  return c.json({ error: 'Slack bot token is not set' }, 400)
+  if (!venture.slack_channel_id) return c.json({ error: 'Slack channel ID is not set' }, 400)
+
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${venture.slack_bot_token}`,
+      'Content-Type':  'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      channel:      venture.slack_channel_id,
+      text:         `🔔 arxys test message from venture *${ventureId}* — Slack is configured correctly.`,
+      unfurl_links: false,
+    }),
+  })
+
+  const data = await res.json() as { ok: boolean; error?: string }
+  if (!data.ok) return c.json({ error: `Slack error: ${data.error}` }, 502)
+
+  return c.json({ ok: true })
+})
+
+adminRoutes.patch('/ventures/:venture_id', async (c) => {
+  const ventureId = c.req.param('venture_id')
+  const body = await c.req.json<{
+    display_name?: string; slack_bot_token?: string; slack_channel_id?: string
+  }>()
+
+  const fields: string[] = []
+  const values: unknown[] = []
+
+  if (body.display_name    !== undefined) { fields.push('display_name = ?');    values.push(body.display_name) }
+  if (body.slack_bot_token  !== undefined) { fields.push('slack_bot_token = ?');  values.push(body.slack_bot_token  || null) }
+  if (body.slack_channel_id !== undefined) { fields.push('slack_channel_id = ?'); values.push(body.slack_channel_id || null) }
+
+  if (!fields.length) return c.json({ error: 'Nothing to update' }, 400)
+
+  values.push(ventureId)
+  await c.env.DB
+    .prepare(`UPDATE ventures SET ${fields.join(', ')} WHERE id = ?`)
+    .bind(...values)
+    .run()
+
+  return c.json({ ok: true })
 })
 
 adminRoutes.post('/ventures', async (c) => {
