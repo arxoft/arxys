@@ -26,10 +26,17 @@ authRoutes.post('/otp/request', async (c) => {
   const db    = c.env.DB
   const email = body.email.toLowerCase().trim()
 
-  // Only members with a known venture email can request OTP
+  // Resolve member — check login_email on members first, then venture_members
   const member = await db
-    .prepare('SELECT m.id, m.display_name FROM members m JOIN venture_members vm ON m.id = vm.member_id WHERE vm.email = ? LIMIT 1')
-    .bind(email)
+    .prepare(`
+      SELECT id, display_name FROM members WHERE login_email = ?
+      UNION
+      SELECT m.id, m.display_name FROM members m
+        JOIN venture_members vm ON m.id = vm.member_id
+        WHERE vm.email = ?
+      LIMIT 1
+    `)
+    .bind(email, email)
     .first<{ id: string; display_name: string }>()
 
   // Always respond with same message to avoid email enumeration
@@ -106,16 +113,17 @@ authRoutes.post('/otp/verify', async (c) => {
     .bind(otp.id)
     .run()
 
-  // Resolve member
+  // Resolve member — check login_email on members first, then venture_members
   const member = await db
     .prepare(`
-      SELECT m.id, m.display_name
-      FROM members m
-      JOIN venture_members vm ON m.id = vm.member_id
-      WHERE vm.email = ?
+      SELECT id, display_name FROM members WHERE login_email = ?
+      UNION
+      SELECT m.id, m.display_name FROM members m
+        JOIN venture_members vm ON m.id = vm.member_id
+        WHERE vm.email = ?
       LIMIT 1
     `)
-    .bind(email)
+    .bind(email, email)
     .first<{ id: string; display_name: string }>()
 
   if (!member) return c.json({ error: 'Member not found' }, 404)

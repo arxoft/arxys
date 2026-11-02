@@ -46,10 +46,10 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   if (!workspace) return c.json({ error: `Workspace '${workspaceId}' not found` }, 404)
 
   const venture = await db
-    .prepare('SELECT id, github_org, slack_bot_token, slack_channel_id FROM ventures WHERE id = ?')
+    .prepare('SELECT id, slack_bot_token, slack_channel_id FROM ventures WHERE id = ?')
     .bind(workspace.venture_id)
     .first<{
-      id: string; github_org: string
+      id: string
       slack_bot_token: string | null; slack_channel_id: string | null
     }>()
 
@@ -102,7 +102,6 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     notionUser:       ventureMember.notion_user ?? member.id,
     notionUserEmail:  ventureMember.email ?? null,
     githubToken:      ventureMember.github_pat,
-    githubOrg:        venture.github_org,
     slackBotToken:    venture.slack_bot_token,
     slackChannelId:   slackChannel,
   })

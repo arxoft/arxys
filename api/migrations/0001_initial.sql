@@ -9,7 +9,6 @@
 CREATE TABLE ventures (
   id               TEXT PRIMARY KEY,   -- slug: "arxoft", "client-acme"
   display_name     TEXT NOT NULL,
-  github_org       TEXT NOT NULL,      -- GitHub org or user handle
   slack_bot_token  TEXT,               -- xoxb-xxx — shared across workspaces; nullable if not set
   slack_channel_id TEXT,               -- default channel; workspaces can override
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))

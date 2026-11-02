@@ -15,8 +15,10 @@ githubRepoRoutes.get('/info', async (c) => {
 // GET /github/repo/list?org=owner[&limit=100]
 githubRepoRoutes.get('/list', async (c) => {
   const creds = c.get('credentials')
-  const org   = c.req.query('org') ?? c.get('credentials').githubOrg
+  const org   = c.req.query('org')
   const limit = c.req.query('limit') ?? '100'
+
+  if (!org) return c.json({ error: 'org query param required' }, 400)
 
   // Try org endpoint first, fall back to user endpoint
   let result: unknown

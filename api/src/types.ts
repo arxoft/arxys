@@ -16,7 +16,7 @@ export type Variables = {
     notion_database_id: string; slack_channel_id: string | null
   }
   venture:        {
-    id: string; github_org: string
+    id: string
     slack_bot_token: string | null; slack_channel_id: string | null
   }
   ventureMember:  {
@@ -37,14 +37,12 @@ export type Credentials = {
   notionApiKey:     string
   notionDatabaseId: string
   notionUser:       string
-  notionUserEmail:  string | null  // venture-scoped email for --mine
+  notionUserEmail:  string | null
   githubToken:      string
-  githubOrg:        string
   slackBotToken:    string | null
   slackChannelId:   string | null
 }
 
-// Notion API version used across all requests
 export const NOTION_VERSION = '2022-06-28'
 export const NOTION_BASE    = 'https://api.notion.com/v1'
 export const GITHUB_BASE    = 'https://api.github.com'

@@ -2,9 +2,8 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 
 const nav = [
-  { to: '/ventures',   label: 'Ventures' },
-  { to: '/workspaces', label: 'Workspaces' },
-  { to: '/members',    label: 'Members' },
+  { to: '/ventures', label: 'Ventures' },
+  { to: '/members',  label: 'Members'  },
 ]
 
 export function Layout() {
@@ -19,12 +18,11 @@ export function Layout() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Sidebar */}
       <aside style={{
         width: 200, background: 'var(--surface)',
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
-        padding: '20px 0',
+        padding: '20px 0', flexShrink: 0,
       }}>
         <div style={{ padding: '0 20px 20px', borderBottom: '1px solid var(--border)', marginBottom: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>arxys</div>
@@ -51,9 +49,10 @@ export function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main style={{ flex: 1, padding: 28, overflowY: 'auto' }}>
-        <Outlet />
+      <main style={{ flex: 1, padding: 28, overflowY: 'auto', minWidth: 0 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <Outlet />
+        </div>
       </main>
     </div>
   )

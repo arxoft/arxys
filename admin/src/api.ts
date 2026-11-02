@@ -24,48 +24,68 @@ async function req<T>(
   return data as T
 }
 
-const get  = <T>(path: string, admin = false)               => req<T>('GET',    path, undefined, admin)
-const post = <T>(path: string, body: unknown, admin = false) => req<T>('POST',   path, body, admin)
-const del  = <T>(path: string, admin = false)               => req<T>('DELETE', path, undefined, admin)
+const get  = <T>(path: string, admin = false)                => req<T>('GET',    path, undefined, admin)
+const post = <T>(path: string, body: unknown, admin = false) => req<T>('POST',   path, body,      admin)
+const patch = <T>(path: string, body: unknown, admin = false) => req<T>('PATCH', path, body,      admin)
+const del  = <T>(path: string, admin = false)                => req<T>('DELETE', path, undefined, admin)
 
-// Auth
 export const api = {
   auth: {
-    requestOtp:  (email: string)               => post('/auth/otp/request', { email }, true),
-    verifyOtp:   (email: string, code: string) => post<{
-      ok: boolean; token: string; member_id: string
-      display_name: string; expires_at: string
-    }>('/auth/otp/verify', { email, code }, true),
-    me:          ()                            => get<{ ok: boolean; member_id: string; display_name: string }>('/auth/me', true),
-    logout:      ()                            => post('/auth/logout', { token: token() }, true),
+    requestOtp: (email: string) =>
+      post('/auth/otp/request', { email }, true),
+    verifyOtp: (email: string, code: string) =>
+      post<{ ok: boolean; token: string; member_id: string; display_name: string; expires_at: string }>(
+        '/auth/otp/verify', { email, code }, true),
+    me:     () => get<{ ok: boolean; member_id: string; display_name: string }>('/auth/me', true),
+    logout: () => post('/auth/logout', { token: token() }, true),
   },
 
   ventures: {
     list:   () => get<Venture[]>('/admin/ventures', true),
-    create: (b: Omit<Venture, 'created_at'>) => post<{ ok: boolean; id: string }>('/admin/ventures', b, true),
+    create: (b: Omit<Venture, 'created_at'>) =>
+      post<{ ok: boolean; id: string }>('/admin/ventures', b, true),
   },
 
   workspaces: {
     list:   () => get<Workspace[]>('/admin/workspaces', true),
-    create: (b: Omit<Workspace, 'created_at'>) => post<{ ok: boolean; id: string }>('/admin/workspaces', b, true),
+    create: (b: Omit<Workspace, 'created_at'>) =>
+      post<{ ok: boolean; id: string }>('/admin/workspaces', b, true),
   },
 
   members: {
     list:   () => get<Member[]>('/admin/members', true),
     create: (b: { id: string; display_name: string }) =>
       post<{ ok: boolean; id: string; api_key: string }>('/admin/members', b, true),
+    update: (member_id: string, b: { id?: string; display_name?: string }) =>
+      patch<{ ok: boolean; id: string }>(`/admin/members/${member_id}`, b, true),
+    delete: (member_id: string) =>
+      del(`/admin/members/${member_id}`, true),
+    regenerateKey: (member_id: string) =>
+      post<{ ok: boolean; member_id: string; api_key: string }>(
+        `/admin/members/${member_id}/regenerate-key`, {}, true),
   },
 
   ventureMembers: {
-    add: (venture_id: string, b: {
+    list:   (venture_id: string) =>
+      get<VentureMember[]>(`/admin/ventures/${venture_id}/members`, true),
+    add:    (venture_id: string, b: {
       member_id: string; github_pat: string
       venture_role?: string; notion_user?: string; email?: string
     }) => post(`/admin/ventures/${venture_id}/members`, b, true),
+    update: (venture_id: string, member_id: string, b: {
+      github_pat?: string; venture_role?: string; notion_user?: string; email?: string
+    }) => patch<{ ok: boolean }>(`/admin/ventures/${venture_id}/members/${member_id}`, b, true),
+    remove: (venture_id: string, member_id: string) =>
+      del(`/admin/ventures/${venture_id}/members/${member_id}`, true),
   },
 
   workspaceMembers: {
+    list:   (workspace_id: string) =>
+      get<WorkspaceMember[]>(`/admin/workspaces/${workspace_id}/members`, true),
     add:    (workspace_id: string, b: { member_id: string; workspace_role?: string }) =>
       post(`/admin/workspaces/${workspace_id}/members`, b, true),
+    update: (workspace_id: string, member_id: string, b: { workspace_role: string }) =>
+      patch<{ ok: boolean }>(`/admin/workspaces/${workspace_id}/members/${member_id}`, b, true),
     remove: (workspace_id: string, member_id: string) =>
       del(`/admin/workspaces/${workspace_id}/members/${member_id}`, true),
   },
@@ -73,7 +93,7 @@ export const api = {
 
 // Types
 export interface Venture {
-  id: string; display_name: string; github_org: string
+  id: string; display_name: string
   slack_bot_token?: string; slack_channel_id?: string; created_at?: string
 }
 export interface Workspace {
@@ -83,4 +103,11 @@ export interface Workspace {
 }
 export interface Member {
   id: string; display_name: string; created_at?: string
+}
+export interface VentureMember {
+  member_id: string; display_name: string; venture_role: string
+  notion_user: string | null; email: string | null
+}
+export interface WorkspaceMember {
+  member_id: string; display_name: string; workspace_role: string
 }
