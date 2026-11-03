@@ -92,6 +92,13 @@ export function Members() {
                 setMsg('')
                 editRef.current?.showModal()
               }}>Edit</button>
+              <button style={{ fontSize: 12 }} onClick={async () => {
+                try {
+                  const res = await api.members.getKey(m.id)
+                  await navigator.clipboard.writeText(res.api_key)
+                  alert('API key copied to clipboard')
+                } catch (e: unknown) { alert(e instanceof Error ? e.message : 'Error') }
+              }}>Copy key</button>
               <button style={{ fontSize: 12 }}
                 onClick={() => { setRegenTarget(m); setRegenKey(''); setMsg(''); regenRef.current?.showModal() }}>
                 Regenerate key

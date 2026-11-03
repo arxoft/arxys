@@ -64,6 +64,8 @@ export const api = {
       post<{ ok: boolean; id: string; api_key: string }>('/admin/members', b, true),
     update: (member_id: string, b: { id?: string; display_name?: string }) =>
       patch<{ ok: boolean; id: string }>(`/admin/members/${member_id}`, b, true),
+    getKey: (member_id: string) =>
+      get<{ api_key: string }>(`/admin/members/${member_id}/api-key`, true),
     delete: (member_id: string) =>
       del(`/admin/members/${member_id}`, true),
     regenerateKey: (member_id: string) =>

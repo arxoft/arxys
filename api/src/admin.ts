@@ -259,9 +259,19 @@ adminRoutes.patch('/members/:member_id', async (c) => {
   return c.json({ ok: true, id: oldId })
 })
 
-// Delete member — cascades to venture_members, workspace_members, sessions
-adminRoutes.delete('/members/:member_id', async (c) => {
+// GET member API key — admin only, returns key for copying
+adminRoutes.get('/members/:member_id/api-key', async (c) => {
   const memberId = c.req.param('member_id')
+  const row = await c.env.DB
+    .prepare('SELECT api_key FROM members WHERE id = ?')
+    .bind(memberId)
+    .first<{ api_key: string }>()
+  if (!row) return c.json({ error: 'Member not found' }, 404)
+  return c.json({ api_key: row.api_key })
+})
+
+// Delete member — cascades to venture_members, workspace_members, sessions
+adminRoutes.delete('/members/:member_id', async (c) => {  const memberId = c.req.param('member_id')
   const adminId  = c.get('adminMemberId')
 
   // Prevent self-deletion
