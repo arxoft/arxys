@@ -59,8 +59,13 @@ authRoutes.post('/otp/request', async (c) => {
     .bind(email, code, expiresAt)
     .run()
 
-  // Send email via Resend
-  await fetch('https://api.resend.com/emails', {
+  // Send email via Resend — fail loudly if not configured or rejected
+  if (!c.env.RESEND_API_KEY || !c.env.RESEND_DOMAIN) {
+    console.error('OTP email not sent: RESEND_API_KEY / RESEND_DOMAIN missing')
+    return c.json({ error: 'Email service is not configured' }, 500)
+  }
+
+  const sent = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${c.env.RESEND_API_KEY}`,
@@ -80,6 +85,11 @@ authRoutes.post('/otp/request', async (c) => {
       `,
     }),
   })
+
+  if (!sent.ok) {
+    console.error(`OTP email not sent: Resend ${sent.status} ${await sent.text()}`)
+    return c.json({ error: 'Failed to send login code' }, 502)
+  }
 
   return c.json({ ok: true, message: 'If that email is registered, a code has been sent.' })
 })

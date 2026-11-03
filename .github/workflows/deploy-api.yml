@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'api/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -12,24 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Wrangler 4 requires Node 22+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
         working-directory: api
         run: npm install --legacy-peer-deps
 
-      - name: Set Resend secrets
+      # Code and secrets ship together in one Worker version, so a deploy can
+      # never go live without them. GitHub repo secrets are the source of truth.
+      - name: Deploy Worker with secrets
         working-directory: api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          RESEND_DOMAIN:        ${{ secrets.RESEND_DOMAIN }}
         run: |
-          echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY
-          echo "${{ secrets.RESEND_DOMAIN }}"  | npx wrangler secret put RESEND_DOMAIN
-
-      - name: Deploy Worker
-        working-directory: api
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deploy
+          for v in RESEND_API_KEY RESEND_DOMAIN; do
+            [ -n "${!v}" ] || { echo "::error::GitHub secret $v is empty"; exit 1; }
+          done
+          jq -n '{RESEND_API_KEY: env.RESEND_API_KEY, RESEND_DOMAIN: env.RESEND_DOMAIN}' > "$RUNNER_TEMP/secrets.json"
+          npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
+          rm -f "$RUNNER_TEMP/secrets.json"
