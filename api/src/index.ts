@@ -18,14 +18,21 @@ const ALLOWED_ORIGINS = [
   'https://admin.arxys.arxoft.com',
 ]
 
+function isAllowedOrigin(origin: string): boolean {
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  // Allow all preview deployments: *.arxys-admin.pages.dev
+  if (/^https:\/\/[a-z0-9-]+\.arxys-admin\.pages\.dev$/.test(origin)) return true
+  return false
+}
+
 const app = new Hono<AppEnv>()
 
 // ---------------------------------------------------------------------------
 // CORS — manual middleware (reliable across all Hono versions)
 // ---------------------------------------------------------------------------
 app.use('*', async (c, next) => {
-  const origin = c.req.header('Origin') ?? ''
-  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  const origin  = c.req.header('Origin') ?? ''
+  const allowed = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0]
 
   // Handle preflight
   if (c.req.method === 'OPTIONS') {
