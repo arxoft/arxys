@@ -130,6 +130,35 @@ adminRoutes.get('/workspaces', async (c) => {
   return c.json(rows.results)
 })
 
+// POST /admin/workspaces/:workspace_id/notion-test
+// Verifies Notion API key + database ID by querying the DB schema
+adminRoutes.post('/workspaces/:workspace_id/notion-test', async (c) => {
+  const workspaceId = c.req.param('workspace_id')
+
+  const ws = await c.env.DB
+    .prepare('SELECT notion_api_key, notion_database_id FROM workspaces WHERE id = ?')
+    .bind(workspaceId)
+    .first<{ notion_api_key: string; notion_database_id: string }>()
+
+  if (!ws) return c.json({ error: 'Workspace not found' }, 404)
+
+  const res = await fetch(`https://api.notion.com/v1/databases/${ws.notion_database_id}`, {
+    headers: {
+      'Authorization':  `Bearer ${ws.notion_api_key}`,
+      'Notion-Version': '2022-06-28',
+    },
+  })
+
+  const data = await res.json() as { object: string; title?: Array<{ plain_text: string }>; message?: string }
+
+  if (data.object === 'error') {
+    return c.json({ error: data.message ?? 'Notion API error' }, 502)
+  }
+
+  const title = data.title?.map(t => t.plain_text).join('') ?? 'Untitled'
+  return c.json({ ok: true, database_title: title })
+})
+
 adminRoutes.post('/workspaces', async (c) => {
   const body = await c.req.json<{
     id: string; venture_id: string; display_name: string
@@ -198,19 +227,23 @@ adminRoutes.patch('/members/:member_id', async (c) => {
       .first()
     if (conflict) return c.json({ error: `ID '${body.id}' is already taken` }, 409)
 
-    // Rename: insert new row, update all FK references, delete old row
-    // D1 doesn't support multi-statement transactions via the API in a single
-    // .prepare() call, so we run each statement sequentially
+    // Rename: delete old row, update all FK references, insert new row
+    // Delete first to free the api_key unique constraint before re-inserting
     const displayName = body.display_name
       ? body.display_name
       : (await c.env.DB.prepare('SELECT display_name FROM members WHERE id = ?').bind(oldId).first<{ display_name: string }>())?.display_name ?? oldId
 
-    await c.env.DB.prepare('INSERT INTO members (id, display_name, api_key, created_at) SELECT ?, ?, api_key, created_at FROM members WHERE id = ?')
-      .bind(newId, displayName, oldId).run()
-    await c.env.DB.prepare('UPDATE venture_members  SET member_id = ? WHERE member_id = ?').bind(newId, oldId).run()
+    // Capture api_key and login_email before deleting
+    const old = await c.env.DB.prepare('SELECT api_key, login_email, created_at FROM members WHERE id = ?')
+      .bind(oldId).first<{ api_key: string; login_email: string | null; created_at: string }>()
+    if (!old) return c.json({ error: 'Member not found' }, 404)
+
+    await c.env.DB.prepare('UPDATE venture_members   SET member_id = ? WHERE member_id = ?').bind(newId, oldId).run()
     await c.env.DB.prepare('UPDATE workspace_members SET member_id = ? WHERE member_id = ?').bind(newId, oldId).run()
-    await c.env.DB.prepare('UPDATE sessions          SET member_id = ? WHERE member_id = ?').bind(newId, oldId).run()
+    await c.env.DB.prepare('DELETE FROM sessions WHERE member_id = ?').bind(oldId).run()
     await c.env.DB.prepare('DELETE FROM members WHERE id = ?').bind(oldId).run()
+    await c.env.DB.prepare('INSERT INTO members (id, display_name, api_key, login_email, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(newId, displayName, old.api_key, old.login_email, old.created_at).run()
 
     return c.json({ ok: true, id: newId })
   }

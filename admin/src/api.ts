@@ -54,6 +54,8 @@ export const api = {
     list:   () => get<Workspace[]>('/admin/workspaces', true),
     create: (b: Omit<Workspace, 'created_at'>) =>
       post<{ ok: boolean; id: string }>('/admin/workspaces', b, true),
+    notionTest: (workspace_id: string) =>
+      post<{ ok: boolean; database_title: string }>(`/admin/workspaces/${workspace_id}/notion-test`, {}, true),
   },
 
   members: {

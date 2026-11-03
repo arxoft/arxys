@@ -2,8 +2,48 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, type Venture, type Workspace, type Member, type VentureMember, type WorkspaceMember } from '../api'
 
-function SlackTestButton({ ventureId }: { ventureId: string }) {
-  const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
+// ---------------------------------------------------------------------------
+// Notion connection card
+// ---------------------------------------------------------------------------
+function NotionCard({ workspaceId, databaseId }: { workspaceId: string; databaseId: string }) {
+  const [state,  setState]  = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [result, setResult] = useState('')
+
+  async function test() {
+    setState('testing')
+    try {
+      const res = await api.workspaces.notionTest(workspaceId)
+      setResult(res.database_title)
+      setState('ok')
+      setTimeout(() => setState('idle'), 4000)
+    } catch (e: unknown) {
+      setResult(e instanceof Error ? e.message : 'Error')
+      setState('error')
+      setTimeout(() => setState('idle'), 5000)
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 16, padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Notion</div>
+      <div style={{ fontSize: 12, marginBottom: 8 }}>
+        DB: <span className="mono">{databaseId}</span>
+      </div>
+      <div className="row" style={{ gap: 10 }}>
+        <button style={{ fontSize: 12 }} disabled={state === 'testing'} onClick={test}>
+          {state === 'testing' ? 'Testing…' : '🔌 Test connection'}
+        </button>
+        {state === 'ok'    && <span style={{ fontSize: 12, color: 'var(--success)' }}>✓ Connected — "{result}"</span>}
+        {state === 'error' && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{result}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Slack test button
+// ---------------------------------------------------------------------------
+function SlackTestButton({ ventureId }: { ventureId: string }) {  const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
   const [err,   setErr]   = useState('')
 
   async function send() {
@@ -335,13 +375,8 @@ export function VentureDetail() {
             {/* Workspace detail */}
             {isOpen && (
               <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px' }}>
-                {/* Credentials (read-only for now) */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Notion</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                    DB: <span className="mono">{ws.notion_database_id}</span>
-                  </div>
-                </div>
+                {/* Notion card */}
+                <NotionCard workspaceId={ws.id} databaseId={ws.notion_database_id} />
 
                 {/* Members */}
                 <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
