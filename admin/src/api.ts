@@ -96,6 +96,8 @@ export const api = {
       patch<{ ok: boolean }>(`/admin/workspaces/${workspace_id}/members/${member_id}`, b, true),
     remove: (workspace_id: string, member_id: string) =>
       del(`/admin/workspaces/${workspace_id}/members/${member_id}`, true),
+    getEnv: (workspace_id: string, member_id: string) =>
+      get<{ env: string }>(`/admin/workspaces/${workspace_id}/members/${member_id}/env`, true),
   },
 }
 

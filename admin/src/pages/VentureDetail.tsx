@@ -389,7 +389,16 @@ export function VentureDetail() {
                     <span style={{ fontSize: 13 }}>{m.display_name}</span>
                     <span className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{m.member_id}</span>
                     <span className="badge admin" style={{ marginLeft: 8 }}>venture admin</span>
-                    <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>implicit</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button style={{ fontSize: 11 }} onClick={async () => {
+                        try {
+                          const res = await api.workspaceMembers.getEnv(ws.id, m.member_id)
+                          await navigator.clipboard.writeText(res.env)
+                          alert(`Copied .env.arxys for ${m.display_name}`)
+                        } catch (e: unknown) { alert(e instanceof Error ? e.message : 'Error') }
+                      }}>Copy .env</button>
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>implicit</span>
+                    </div>
                   </div>
                 ))}
 
@@ -406,8 +415,17 @@ export function VentureDetail() {
                       <option value="member">member</option>
                       <option value="admin">admin</option>
                     </select>
-                    <button className="danger" style={{ fontSize: 11, marginLeft: 'auto' }}
-                      onClick={() => removeWsm(ws.id, m.member_id)}>Remove</button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button style={{ fontSize: 11 }} onClick={async () => {
+                        try {
+                          const res = await api.workspaceMembers.getEnv(ws.id, m.member_id)
+                          await navigator.clipboard.writeText(res.env)
+                          alert(`Copied .env.arxys for ${m.display_name}`)
+                        } catch (e: unknown) { alert(e instanceof Error ? e.message : 'Error') }
+                      }}>Copy .env</button>
+                      <button className="danger" style={{ fontSize: 11 }}
+                        onClick={() => removeWsm(ws.id, m.member_id)}>Remove</button>
+                    </div>
                   </div>
                 ))}
 

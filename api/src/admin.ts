@@ -270,6 +270,21 @@ adminRoutes.get('/members/:member_id/api-key', async (c) => {
   return c.json({ api_key: row.api_key })
 })
 
+// GET workspace member env — returns .env.arxys content for a member in a workspace
+adminRoutes.get('/workspaces/:workspace_id/members/:member_id/env', async (c) => {
+  const { workspace_id, member_id } = c.req.param()
+
+  const row = await c.env.DB
+    .prepare('SELECT api_key FROM members WHERE id = ?')
+    .bind(member_id)
+    .first<{ api_key: string }>()
+  if (!row) return c.json({ error: 'Member not found' }, 404)
+
+  return c.json({
+    env: `ARXYS_API_KEY=${row.api_key}\nARXYS_WORKSPACE=${workspace_id}`,
+  })
+})
+
 // Delete member — cascades to venture_members, workspace_members, sessions
 adminRoutes.delete('/members/:member_id', async (c) => {  const memberId = c.req.param('member_id')
   const adminId  = c.get('adminMemberId')
