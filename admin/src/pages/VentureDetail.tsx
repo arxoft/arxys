@@ -488,7 +488,7 @@ export function VentureDetail() {
           <div className="field"><label>Member</label>
             <select required value={vmForm.member_id} onChange={vmf('member_id')}>
               <option value="">Select member…</option>
-              {availableMembers.map(m => <option key={m.id} value={m.id}>{m.display_name} ({m.id})</option>)}
+              {availableMembers.map(m => <option key={m.id} value={m.id}>{m.display_name} ({m.login_email ?? m.id})</option>)}
             </select></div>
           <div className="field"><label>Role</label>
             <select value={vmForm.venture_role} onChange={vmf('venture_role')}>
@@ -540,9 +540,9 @@ export function VentureDetail() {
             <select required value={addWsmForm.member_id} onChange={awf('member_id')}>
               <option value="">Select member…</option>
               {vmembers
-                .filter(vm => vm.venture_role !== 'admin') // admins already have implicit access
+                .filter(vm => vm.venture_role !== 'admin')
                 .filter(vm => !(wsmembers[addWsmTarget] ?? []).find(w => w.member_id === vm.member_id))
-                .map(vm => <option key={vm.member_id} value={vm.member_id}>{vm.display_name}</option>)
+                .map(vm => <option key={vm.member_id} value={vm.member_id}>{vm.display_name} ({vm.email ?? vm.member_id})</option>)
               }
             </select></div>
           <div className="field"><label>Role</label>

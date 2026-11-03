@@ -108,7 +108,7 @@ export interface Workspace {
   notion_database_id: string; slack_channel_id?: string; created_at?: string
 }
 export interface Member {
-  id: string; display_name: string; created_at?: string
+  id: string; display_name: string; login_email?: string; created_at?: string
 }
 export interface VentureMember {
   member_id: string; display_name: string; venture_role: string

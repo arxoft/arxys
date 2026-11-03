@@ -80,6 +80,7 @@ export function Members() {
               <div style={{ fontWeight: 600, fontSize: 14 }}>{m.display_name}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
                 <span className="mono">{m.id}</span>
+                {m.login_email && <><span style={{ margin: '0 6px' }}>·</span><span>{m.login_email}</span></>}
                 <span style={{ margin: '0 6px' }}>·</span>
                 <span>Joined {m.created_at?.slice(0, 10)}</span>
               </div>

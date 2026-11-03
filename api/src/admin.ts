@@ -182,7 +182,7 @@ adminRoutes.post('/workspaces', async (c) => {
 
 adminRoutes.get('/members', async (c) => {
   const rows = await c.env.DB
-    .prepare('SELECT id, display_name, created_at FROM members')
+    .prepare('SELECT id, display_name, login_email, created_at FROM members')
     .all()
   return c.json(rows.results)
 })
