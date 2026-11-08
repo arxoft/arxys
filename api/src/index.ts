@@ -55,6 +55,7 @@ app.use('*', async (c, next) => {
   // Attach CORS headers to every response
   c.res.headers.set('Access-Control-Allow-Origin',      allowed)
   c.res.headers.set('Access-Control-Allow-Credentials', 'true')
+  return
 })
 
 // ---------------------------------------------------------------------------
