@@ -156,7 +156,8 @@ export function VentureDetail() {
   // Forms
   const [wsForm, setWsForm] = useState({
     id: '', display_name: '', github_repo: '',
-    notion_api_key: '', notion_database_id: '', slack_channel_id: '',
+    board_type: 'notion', notion_api_key: '', notion_database_id: '',
+    github_project_id: '', slack_channel_id: '',
   })
   const [vmForm, setVmForm] = useState({
     member_id: '', github_pat: '', venture_role: 'member', notion_user: '', email: '',
@@ -201,9 +202,9 @@ export function VentureDetail() {
   async function saveWs(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setMsg('')
     try {
-      await api.workspaces.create({ ...wsForm, venture_id: id! })
+      await api.workspaces.create({ ...wsForm, venture_id: id!, board_type: 'notion' })
       newWsRef.current?.close()
-      setWsForm({ id: '', display_name: '', github_repo: '', notion_api_key: '', notion_database_id: '', slack_channel_id: '' })
+      setWsForm({ id: '', display_name: '', github_repo: '', notion_api_key: '', notion_database_id: '', slack_channel_id: '', board_type: 'notion', github_project_id: '' })
       load()
     } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Error') }
     finally { setSaving(false) }
@@ -375,8 +376,11 @@ export function VentureDetail() {
             {/* Workspace detail */}
             {isOpen && (
               <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px' }}>
-                {/* Notion card */}
-                <NotionCard workspaceId={ws.id} databaseId={ws.notion_database_id} />
+                {/* Notion card — only shown for notion-type workspaces */}
+                {ws.board_type === 'github'
+                  ? <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>⚙ GitHub Project board</div>
+                  : <NotionCard workspaceId={ws.id} databaseId={ws.notion_database_id ?? ''} />
+                }
 
                 {/* Members */}
                 <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>

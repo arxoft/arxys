@@ -4,6 +4,15 @@ import type { AppEnv } from '../types'
 
 export const notionDbRoutes = new Hono<AppEnv>()
 
+// Guard: all notion/db routes require a notion-type workspace
+notionDbRoutes.use('*', async (c, next) => {
+  const ws = c.get('workspace')
+  if (ws.board_type !== 'notion') {
+    return c.json({ error: 'This workspace uses GitHub as its board. Notion routes are not available.' }, 400)
+  }
+  return next()
+})
+
 // GET /notion/db/list — list board aliases for this workspace's venture
 notionDbRoutes.get('/list', async (c) => {
   const workspace = c.get('workspace')

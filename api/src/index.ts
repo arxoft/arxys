@@ -4,11 +4,13 @@ import { notionTaskRoutes }    from './notion/task'
 import { notionCommentRoutes } from './notion/comment'
 import { notionUserRoutes }    from './notion/user'
 import { notionDbRoutes }      from './notion/db'
-import { githubPrRoutes }    from './github/pr'
-import { githubIssueRoutes } from './github/issue'
-import { githubRepoRoutes }  from './github/repo'
-import { githubUserRoutes }  from './github/user'
-import { slackRoutes }       from './slack/routes'
+import { githubPrRoutes }      from './github/pr'
+import { githubIssueRoutes }   from './github/issue'
+import { githubProjectRoutes } from './github/project'
+import { githubMigrateRoutes } from './github/migrate'
+import { githubRepoRoutes }    from './github/repo'
+import { githubUserRoutes }    from './github/user'
+import { slackRoutes }         from './slack/routes'
 import { adminRoutes }         from './admin'
 import { authRoutes }          from './auth'
 import type { AppEnv } from './types'
@@ -155,6 +157,30 @@ app.get('/', (c) => c.json({
       ],
     },
 
+    'github/project': {
+      description: 'GitHub Projects v2 — task boards (GraphQL-backed)',
+      routes: [
+        'GET  /v1/github/project/list                                                  → list projects for venture org',
+        'POST /v1/github/project              { title }                               → create project',
+        'POST /v1/github/project/bootstrap    { title }                               → create project + arxys Status field, saves project_id to workspace',
+        'GET  /v1/github/project/:id/issues                                           → list issues in project with status',
+        'GET  /v1/github/project/:id/issues?status=In+Progress                        → filter by status',
+        'GET  /v1/github/project/:id/issues?mine=1                                    → your issues',
+        'POST /v1/github/project/:id/issues   { repo, issue_number }                 → add issue to project',
+        'PATCH /v1/github/project/:id/issues/:itemId { field_id, value }             → update field (e.g. Status)',
+        'GET  /v1/github/project/:id/fields                                           → list project fields + option IDs',
+      ],
+    },
+
+    'github/migrate': {
+      description: 'One-way Notion → GitHub Project migration',
+      routes: [
+        'POST /v1/github/migrate/notion-to-project                        → migrate open Notion tasks to GitHub Project',
+        'POST /v1/github/migrate/notion-to-project?dry_run=1              → preview migration without writing',
+        'POST /v1/github/migrate/notion-to-project?all=1                  → include Completed + Cancelled tasks',
+      ],
+    },
+
     'github/repo': {
       description: 'GitHub repositories',
       routes: [
@@ -199,11 +225,13 @@ api.route('/notion/task',    notionTaskRoutes)
 api.route('/notion/comment', notionCommentRoutes)
 api.route('/notion/user',    notionUserRoutes)
 api.route('/notion/db',      notionDbRoutes)
-api.route('/github/pr',    githubPrRoutes)
-api.route('/github/issue', githubIssueRoutes)
-api.route('/github/repo',  githubRepoRoutes)
-api.route('/github/user',  githubUserRoutes)
-api.route('/slack',        slackRoutes)
+api.route('/github/pr',      githubPrRoutes)
+api.route('/github/issue',   githubIssueRoutes)
+api.route('/github/project', githubProjectRoutes)
+api.route('/github/migrate', githubMigrateRoutes)
+api.route('/github/repo',    githubRepoRoutes)
+api.route('/github/user',    githubUserRoutes)
+api.route('/slack',          slackRoutes)
 
 app.route('/v1', api)
 

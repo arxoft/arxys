@@ -1,4 +1,4 @@
-import { GITHUB_BASE } from '../types'
+import { GITHUB_BASE, GITHUB_GRAPHQL } from '../types'
 import type { Credentials } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -50,3 +50,33 @@ export const githubPut    = (path: string, creds: Credentials, body: unknown) =>
 
 export const githubDelete = (path: string, creds: Credentials) =>
   githubRequest('DELETE', path, creds)
+
+// ---------------------------------------------------------------------------
+// GitHub GraphQL API client — used for Projects v2 (no REST equivalent)
+// ---------------------------------------------------------------------------
+
+export async function githubGraphQL<T = unknown>(
+  query: string,
+  variables: Record<string, unknown>,
+  creds: Credentials
+): Promise<T> {
+  const res = await fetch(GITHUB_GRAPHQL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${creds.githubToken}`,
+      'Content-Type':  'application/json',
+      'User-Agent':    'arxys-api/1.0',
+    },
+    body: JSON.stringify({ query, variables }),
+  })
+
+  const json = await res.json() as { data?: T; errors?: Array<{ message: string }> }
+
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e) => e.message).join('; '))
+  }
+
+  if (!json.data) throw new Error('GitHub GraphQL returned no data')
+
+  return json.data
+}

@@ -5,6 +5,15 @@ import type { AppEnv } from '../types'
 
 export const notionTaskRoutes = new Hono<AppEnv>()
 
+// Guard: all notion/task routes require a notion-type workspace
+notionTaskRoutes.use('*', async (c, next) => {
+  const ws = c.get('workspace')
+  if (ws.board_type !== 'notion') {
+    return c.json({ error: 'This workspace uses GitHub as its board. Use /v1/github/issue routes instead.' }, 400)
+  }
+  return next()
+})
+
 const NO_PREFIX_RE = /^\(\d+\) */
 
 function titleWithoutNo(t: string) { return t.replace(NO_PREFIX_RE, '') }
@@ -68,7 +77,7 @@ notionTaskRoutes.get('/list', async (c) => {
 // ---------------------------------------------------------------------------
 // Review queue — Kahn's topological sort by Depends on, tie-break by PR #
 // ---------------------------------------------------------------------------
-async function reviewQueue(c: Parameters<typeof notionTaskRoutes.get>[1] extends (c: infer C) => unknown ? C : never, creds: import('../types').Credentials) {
+async function reviewQueue(c: import('hono').Context<AppEnv>, creds: import('../types').Credentials) {
   type Task = {
     id: string; no: number; title: string; pr_url: string; dep_ids: string[]
   }

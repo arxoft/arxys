@@ -5,6 +5,15 @@ import type { AppEnv } from '../types'
 
 export const notionCommentRoutes = new Hono<AppEnv>()
 
+// Guard: all notion/comment routes require a notion-type workspace
+notionCommentRoutes.use('*', async (c, next) => {
+  const ws = c.get('workspace')
+  if (ws.board_type !== 'notion') {
+    return c.json({ error: 'This workspace uses GitHub as its board. Notion routes are not available.' }, 400)
+  }
+  return next()
+})
+
 // POST /notion/comment/:no
 notionCommentRoutes.post('/:no', async (c) => {
   const creds  = c.get('credentials')

@@ -125,7 +125,7 @@ adminRoutes.post('/ventures', async (c) => {
 
 adminRoutes.get('/workspaces', async (c) => {
   const rows = await c.env.DB
-    .prepare('SELECT id, venture_id, display_name, github_repo, notion_database_id FROM workspaces')
+    .prepare('SELECT id, venture_id, display_name, github_repo, board_type, notion_database_id, github_project_id FROM workspaces')
     .all()
   return c.json(rows.results)
 })
@@ -138,9 +138,12 @@ adminRoutes.post('/workspaces/:workspace_id/notion-test', async (c) => {
   const ws = await c.env.DB
     .prepare('SELECT notion_api_key, notion_database_id FROM workspaces WHERE id = ?')
     .bind(workspaceId)
-    .first<{ notion_api_key: string; notion_database_id: string }>()
+    .first<{ notion_api_key: string | null; notion_database_id: string | null }>()
 
   if (!ws) return c.json({ error: 'Workspace not found' }, 404)
+  if (!ws.notion_api_key || !ws.notion_database_id) {
+    return c.json({ error: 'Workspace has no Notion credentials' }, 400)
+  }
 
   const res = await fetch(`https://api.notion.com/v1/databases/${ws.notion_database_id}`, {
     headers: {
@@ -159,20 +162,113 @@ adminRoutes.post('/workspaces/:workspace_id/notion-test', async (c) => {
   return c.json({ ok: true, database_title: title })
 })
 
+// POST /admin/workspaces/:workspace_id/github-project-test
+// Verifies a GitHub project ID is accessible using the first venture member's PAT
+adminRoutes.post('/workspaces/:workspace_id/github-project-test', async (c) => {
+  const workspaceId = c.req.param('workspace_id')
+
+  const ws = await c.env.DB
+    .prepare('SELECT github_project_id, venture_id FROM workspaces WHERE id = ?')
+    .bind(workspaceId)
+    .first<{ github_project_id: string | null; venture_id: string }>()
+
+  if (!ws) return c.json({ error: 'Workspace not found' }, 404)
+  if (!ws.github_project_id) return c.json({ error: 'No github_project_id set on this workspace' }, 400)
+
+  // Use any admin member's PAT from this venture
+  const member = await c.env.DB
+    .prepare(`SELECT github_pat FROM venture_members WHERE venture_id = ? AND venture_role = 'admin' LIMIT 1`)
+    .bind(ws.venture_id)
+    .first<{ github_pat: string }>()
+
+  if (!member) return c.json({ error: 'No admin member found for this venture' }, 404)
+
+  const res = await fetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${member.github_pat}`,
+      'Content-Type':  'application/json',
+      'User-Agent':    'arxys-api/1.0',
+    },
+    body: JSON.stringify({
+      query: `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id title url number } } }`,
+      variables: { id: ws.github_project_id },
+    }),
+  })
+
+  const json = await res.json() as {
+    data?: { node: { id: string; title: string; url: string; number: number } | null }
+    errors?: Array<{ message: string }>
+  }
+
+  if (json.errors?.length) return c.json({ error: json.errors[0].message }, 502)
+  if (!json.data?.node)    return c.json({ error: 'Project not found or not accessible' }, 404)
+
+  return c.json({ ok: true, project: json.data.node })
+})
+
+// PATCH /admin/workspaces/:workspace_id — update workspace fields
+adminRoutes.patch('/workspaces/:workspace_id', async (c) => {
+  const workspaceId = c.req.param('workspace_id')
+  const body = await c.req.json<{
+    display_name?: string
+    board_type?: 'notion' | 'github'
+    notion_api_key?: string
+    notion_database_id?: string
+    github_project_id?: string
+    slack_channel_id?: string
+  }>()
+
+  const fields: string[] = []
+  const values: unknown[] = []
+
+  if (body.display_name       !== undefined) { fields.push('display_name = ?');       values.push(body.display_name) }
+  if (body.board_type         !== undefined) { fields.push('board_type = ?');         values.push(body.board_type) }
+  if (body.notion_api_key     !== undefined) { fields.push('notion_api_key = ?');     values.push(body.notion_api_key || null) }
+  if (body.notion_database_id !== undefined) { fields.push('notion_database_id = ?'); values.push(body.notion_database_id || null) }
+  if (body.github_project_id  !== undefined) { fields.push('github_project_id = ?');  values.push(body.github_project_id || null) }
+  if (body.slack_channel_id   !== undefined) { fields.push('slack_channel_id = ?');   values.push(body.slack_channel_id || null) }
+
+  if (!fields.length) return c.json({ error: 'Nothing to update' }, 400)
+
+  values.push(workspaceId)
+  await c.env.DB
+    .prepare(`UPDATE workspaces SET ${fields.join(', ')} WHERE id = ?`)
+    .bind(...values)
+    .run()
+
+  return c.json({ ok: true })
+})
+
 adminRoutes.post('/workspaces', async (c) => {
   const body = await c.req.json<{
     id: string; venture_id: string; display_name: string
-    github_repo: string; notion_api_key: string
-    notion_database_id: string; slack_channel_id?: string
+    github_repo: string
+    board_type?: 'notion' | 'github'
+    notion_api_key?: string; notion_database_id?: string
+    github_project_id?: string
+    slack_channel_id?: string
   }>()
+
+  const boardType = body.board_type ?? 'notion'
+
+  if (boardType === 'notion' && (!body.notion_api_key || !body.notion_database_id)) {
+    return c.json({ error: 'notion_api_key and notion_database_id are required for board_type=notion' }, 400)
+  }
+  if (boardType === 'github' && !body.github_project_id) {
+    return c.json({ error: 'github_project_id is required for board_type=github (or leave blank and run /v1/github/project/bootstrap after)' }, 400)
+  }
 
   await c.env.DB
     .prepare(`INSERT INTO workspaces
-              (id, venture_id, display_name, github_repo, notion_api_key,
-               notion_database_id, slack_channel_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .bind(body.id, body.venture_id, body.display_name, body.github_repo,
-          body.notion_api_key, body.notion_database_id, body.slack_channel_id ?? null)
+              (id, venture_id, display_name, github_repo, board_type,
+               notion_api_key, notion_database_id, github_project_id, slack_channel_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      body.id, body.venture_id, body.display_name, body.github_repo, boardType,
+      body.notion_api_key ?? null, body.notion_database_id ?? null,
+      body.github_project_id ?? null, body.slack_channel_id ?? null
+    )
     .run()
 
   return c.json({ ok: true, id: body.id }, 201)

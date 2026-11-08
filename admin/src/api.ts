@@ -54,8 +54,13 @@ export const api = {
     list:   () => get<Workspace[]>('/admin/workspaces', true),
     create: (b: Omit<Workspace, 'created_at'>) =>
       post<{ ok: boolean; id: string }>('/admin/workspaces', b, true),
+    update: (id: string, b: Partial<Omit<Workspace, 'id' | 'venture_id' | 'created_at'>>) =>
+      patch<{ ok: boolean }>(`/admin/workspaces/${id}`, b, true),
     notionTest: (workspace_id: string) =>
       post<{ ok: boolean; database_title: string }>(`/admin/workspaces/${workspace_id}/notion-test`, {}, true),
+    githubProjectTest: (workspace_id: string) =>
+      post<{ ok: boolean; project: { id: string; title: string; url: string; number: number } }>(
+        `/admin/workspaces/${workspace_id}/github-project-test`, {}, true),
   },
 
   members: {
@@ -108,8 +113,11 @@ export interface Venture {
 }
 export interface Workspace {
   id: string; venture_id: string; display_name: string
-  github_repo: string; notion_api_key: string
-  notion_database_id: string; slack_channel_id?: string; created_at?: string
+  github_repo: string; board_type: string
+  notion_api_key: string | null
+  notion_database_id: string | null
+  github_project_id: string | null
+  slack_channel_id?: string; created_at?: string
 }
 export interface Member {
   id: string; display_name: string; login_email?: string; created_at?: string

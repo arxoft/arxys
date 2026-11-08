@@ -5,6 +5,14 @@ import type { Credentials } from '../types'
 // Thin Notion API client — mirrors lib/common.sh notion_get/post/patch
 // ---------------------------------------------------------------------------
 
+// Guard — call at the top of any Notion route handler
+export function requireNotionCreds(creds: Credentials): { notionApiKey: string; notionDatabaseId: string } {
+  if (!creds.notionApiKey || !creds.notionDatabaseId) {
+    throw new Error('This workspace is not configured for Notion. Board type is GitHub.')
+  }
+  return { notionApiKey: creds.notionApiKey, notionDatabaseId: creds.notionDatabaseId }
+}
+
 async function notionRequest(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
