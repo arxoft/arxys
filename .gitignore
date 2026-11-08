@@ -5,3 +5,4 @@ dist/
 admin/src/*.js
 admin/src/**/*.js
 .env
+**/.wrangler/
