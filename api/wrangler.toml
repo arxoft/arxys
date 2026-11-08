@@ -3,6 +3,8 @@ main       = "src/index.ts"
 compatibility_date = "2024-09-23"
 account_id = "0a3777c8ac5ed393ad6b580e151cb3a9"
 keep_vars  = true  # never wipe vars set in the Cloudflare dashboard on deploy
+workers_dev = false  # never expose on workers.dev — only on the custom route below
+
 [[d1_databases]]
 binding      = "DB"
 database_name = "arxys-db"

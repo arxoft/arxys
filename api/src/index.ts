@@ -43,6 +43,12 @@ app.use('*', cors({
   maxAge:        86400,
 }))
 
+// Never let Cloudflare or any proxy cache API responses
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('Cache-Control', 'no-store')
+})
+
 // ---------------------------------------------------------------------------
 // API reference — no auth required
 // ---------------------------------------------------------------------------
