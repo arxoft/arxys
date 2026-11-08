@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth'
 import { notionTaskRoutes }    from './notion/task'
 import { notionCommentRoutes } from './notion/comment'
@@ -22,7 +23,7 @@ const ALLOWED_ORIGINS = [
 
 function isAllowedOrigin(origin: string): boolean {
   if (ALLOWED_ORIGINS.includes(origin)) return true
-  // Allow all preview deployments: *.arxys-admin.pages.dev
+  // Allow all Cloudflare Pages preview deployments: *.arxys-admin.pages.dev
   if (/^https:\/\/[a-z0-9-]+\.arxys-admin\.pages\.dev$/.test(origin)) return true
   return false
 }
@@ -30,33 +31,17 @@ function isAllowedOrigin(origin: string): boolean {
 const app = new Hono<AppEnv>()
 
 // ---------------------------------------------------------------------------
-// CORS — manual middleware (reliable across all Hono versions)
+// CORS — Hono built-in middleware with dynamic origin matching
+// Handles OPTIONS preflight + response headers on every route automatically
 // ---------------------------------------------------------------------------
-app.use('*', async (c, next) => {
-  const origin  = c.req.header('Origin') ?? ''
-  const allowed = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0]
-
-  // Handle preflight
-  if (c.req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin':      allowed,
-        'Access-Control-Allow-Methods':     'GET, POST, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers':     'Content-Type, X-Api-Key, X-Workspace, X-Session-Token',
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Max-Age':           '86400',
-      },
-    })
-  }
-
-  await next()
-
-  // Attach CORS headers to every response
-  c.res.headers.set('Access-Control-Allow-Origin',      allowed)
-  c.res.headers.set('Access-Control-Allow-Credentials', 'true')
-  return
-})
+app.use('*', cors({
+  origin: (origin) => isAllowedOrigin(origin) ? origin : '',
+  allowMethods:  ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders:  ['Content-Type', 'X-Api-Key', 'X-Workspace', 'X-Session-Token'],
+  exposeHeaders: [],
+  credentials:   true,
+  maxAge:        86400,
+}))
 
 // ---------------------------------------------------------------------------
 // API reference — no auth required
