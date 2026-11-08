@@ -52,7 +52,7 @@ app.use('*', async (c, next) => {
 // ---------------------------------------------------------------------------
 // API reference — no auth required
 // ---------------------------------------------------------------------------
-app.get('/', (c) => c.json({
+app.get('/api', (c) => c.json({
   service:  'arxys-api',
   version:  '1.0.0',
   base_url: 'https://arxys.arxoft.com',
@@ -204,11 +204,11 @@ app.get('/', (c) => c.json({
 // ---------------------------------------------------------------------------
 // Auth routes — no middleware
 // ---------------------------------------------------------------------------
-app.route('/auth', authRoutes)
+app.route('/api/auth', authRoutes)
 
 // ---------------------------------------------------------------------------
 // All operational routes require auth + workspace context
-// Mounted under /v1 to avoid conflicting with /admin and /auth
+// Mounted under /api/v1
 // ---------------------------------------------------------------------------
 const api = new Hono<AppEnv>()
 api.use('*', authMiddleware)
@@ -225,12 +225,12 @@ api.route('/github/repo',    githubRepoRoutes)
 api.route('/github/user',    githubUserRoutes)
 api.route('/slack',          slackRoutes)
 
-app.route('/v1', api)
+app.route('/api/v1', api)
 
 // ---------------------------------------------------------------------------
 // Admin routes — session token auth, managed inside adminRoutes
 // ---------------------------------------------------------------------------
-app.route('/admin', adminRoutes)
+app.route('/api/admin', adminRoutes)
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404))
 app.onError((err, c) => {

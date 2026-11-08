@@ -3,7 +3,7 @@ main       = "src/index.ts"
 compatibility_date = "2024-09-23"
 account_id = "0a3777c8ac5ed393ad6b580e151cb3a9"
 keep_vars  = true  # never wipe vars set in the Cloudflare dashboard on deploy
-workers_dev = false  # never expose on workers.dev — only on the custom route below
+workers_dev = false
 
 [[d1_databases]]
 binding      = "DB"
@@ -11,7 +11,7 @@ database_name = "arxys-db"
 database_id  = "ac5e4204-5b76-4eae-a1b7-da27a01a687b"
 
 [[routes]]
-pattern = "arxys.arxoft.com/*"
+pattern = "arxys.arxoft.com/api/*"
 zone_id = "ae4186f372f44167db1b35d905e51f2d"
 
 # Secrets (set via wrangler secret put — never stored here)

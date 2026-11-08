@@ -2,7 +2,7 @@
 // api.ts — typed client for arxys API
 // =============================================================================
 
-const BASE = 'https://arxys.arxoft.com'
+const BASE = 'https://arxys.arxoft.com/api'
 const API  = `${BASE}/v1`
 
 function token() { return localStorage.getItem('arxys_token') ?? '' }
