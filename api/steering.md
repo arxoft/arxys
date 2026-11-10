@@ -21,8 +21,8 @@ description: Agent instructions for arxys API — Notion task management, GitHub
 
 ## API
 
-**Base URL:** `https://arxys.arxoft.com`  
-**Full reference:** `GET https://arxys.arxoft.com/` — returns all endpoints, parameters, and auth details.
+**Base URL:** `https://arxysapis.arxoft.com`  
+**Full reference:** `GET https://arxysapis.arxoft.com/` — returns all endpoints, parameters, and auth details.
 
 ### Authentication
 

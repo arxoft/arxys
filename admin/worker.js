@@ -1,4 +1,4 @@
-// Admin SPA Worker — serves static assets from dist/ at admin.arxys.arxoft.com
+// Admin SPA Worker — serves static assets from dist/ at arxysadmin.arxoft.com
 // Falls back to index.html for all unmatched paths (SPA client-side routing).
 export default {
   async fetch(request, env) {

@@ -54,7 +54,7 @@ app.use('*', async (c, next) => {
 app.get('/', (c) => c.json({
   service:  'arxys-api',
   version:  '1.0.0',
-  base_url: 'https://arxys.arxoft.com',
+  base_url: 'https://arxysapis.arxoft.com',
   docs:     'https://github.com/arxoft/arxys',
 
   auth: {
