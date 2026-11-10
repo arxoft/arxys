@@ -138,7 +138,7 @@ A dirty working directory means work is in progress. It must be either:
 |---------------|--------------------------------------------------------------------------------------------------------------|
 | Title         | 9–12 words max; no filler words                                                                              |
 | Description   | Always fill in: what, why, acceptance criteria                                                               |
-| Comments      | Short and focused; one concern per comment; full Notion URL when referencing another task (never just `#42`) |
+| Comments      | Short and focused; one concern per comment; full Notion URL when referencing another task (never just `#42`); full PR URL when referencing a PR (never just the PR number) |
 | Status change | Always comment first explaining why                                                                          |
 | Effort        | Fibonacci 1–13; 13 = consider splitting                                                                      |
 | Tags          | Add `has-migration` or `has-env-change` when applicable                                                      |
@@ -154,7 +154,7 @@ A dirty working directory means work is in progress. It must be either:
 3. Comment then move to In Progress: comment first, then `PATCH /v1/notion/task/:no { "property": "Status", "value": "In Progress" }`
 4. Implement, test, propose commit message — human commits
 5. Human pushes and creates PR: `POST /v1/github/pr { "repo": "...", "title": "...", "head": "..." }`
-6. Comment with PR URL on the task, then move to Pending Review
+6. Comment with full PR URL on the task (e.g. `https://github.com/org/repo/pull/42` — never just `#42`), then move to Pending Review
 
 ### Review
 1. Pick from review queue: `GET /v1/notion/task/list?review_queue=1`

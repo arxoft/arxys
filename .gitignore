@@ -6,3 +6,4 @@ admin/src/*.js
 admin/src/**/*.js
 .env
 **/.wrangler/
+!.env.example
