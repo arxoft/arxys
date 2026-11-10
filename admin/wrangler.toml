@@ -11,5 +11,5 @@ html_handling      = "none"
 not_found_handling = "single-page-application"
 
 [[routes]]
-pattern = "arxys.arxoft.com/admin*"
+pattern = "arxysadmin.arxoft.com/*"
 zone_id = "ae4186f372f44167db1b35d905e51f2d"
