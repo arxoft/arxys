@@ -98,15 +98,17 @@ Both workers have `workers_dev = false`. This is intentional — it disables the
 
 ## Known Issues and Past Incidents
 
-### Route displacement (fixed)
+### Route displacement (ongoing — mitigated)
 
-**Symptom:** Admin UI stops working after an API redeploy, or vice versa.  
-**Cause:** Cloudflare Workers route registration is global per zone. If two workers claim overlapping routes and one is deployed, the new deploy can displace the other's route.  
-**Fix:** Both workers use non-overlapping explicit patterns:
-- API: `arxysapis.arxoft.com/*`
-- Admin: `arxysadmin.arxoft.com/*`
-
-They are on separate subdomains now — no overlap possible. This replaced the old same-domain path routing (`arxoft.com/api/*` vs `arxoft.com/*`).
+**Symptom:** Admin or API stops responding with CORS errors or 404s immediately after a deploy.  
+**Cause:** Cloudflare Workers route registration is per-zone, not per-worker. Even with non-overlapping routes, when both workers deploy in parallel (same push triggers both workflows simultaneously), one `wrangler deploy` can displace the other's route registration on the zone.  
+**Mitigation:** `deploy-admin.yml` ends with a "Re-assert API route" step — after admin deploys, it immediately redeploys the API worker. This ensures the API route is always registered last and wins. If only API deploys (no admin changes), it runs alone with no race.  
+**Manual recovery:** If CORS/404 errors appear after a deploy, run `cd api && npx wrangler deploy` locally to restore the API route. Check with:
+```bash
+curl -sI -X OPTIONS https://arxysapis.arxoft.com/ \
+  -H "Origin: https://arxysadmin.arxoft.com" \
+  -H "Access-Control-Request-Method: GET" | grep access-control
+```
 
 ### Stale edge caching (fixed)
 
