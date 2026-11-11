@@ -1,8 +1,11 @@
----
-inclusion: auto
-name: arxys
-description: Agent instructions for arxys API — Notion task management, GitHub operations, and workspace workflows via HTTP. Activate when the agent is working on tasks, PRs, branches, or anything involving Notion or GitHub.
----
+<!--
+  Copy this file to .kiro/steering/<your-project>.md in your project root.
+  Then update the front-matter below and fill in the placeholders throughout.
+
+  inclusion: auto
+  name: arxys
+  description: Agent instructions for arxys API — Notion task management, GitHub operations, and workspace workflows via HTTP. Activate when the agent is working on tasks, PRs, branches, or anything involving Notion or GitHub.
+-->
 
 # arxys — Agent Instructions (API Edition)
 

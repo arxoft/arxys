@@ -40,7 +40,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     .bind(workspaceId)
     .first<{
       id: string; venture_id: string; display_name: string
-      github_repo: string; board_type: string
+      github_repo: string; board_type: 'notion' | 'github' | 'both'
       notion_api_key: string | null; notion_database_id: string | null
       github_project_id: string | null; slack_channel_id: string | null
     }>()
