@@ -117,7 +117,7 @@ export interface Workspace {
   notion_api_key: string | null
   notion_database_id: string | null
   github_project_id: string | null
-  slack_channel_id?: string; created_at?: string
+  slack_channel_id?: string | null; created_at?: string
 }
 export interface Member {
   id: string; display_name: string; login_email?: string; created_at?: string
