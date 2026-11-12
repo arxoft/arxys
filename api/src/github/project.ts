@@ -259,25 +259,28 @@ githubProjectRoutes.post('/', async (c) => {
 githubProjectRoutes.post('/bootstrap', async (c) => {
   const creds = c.get('credentials')
   const ws    = c.get('workspace')
-  const body  = await c.req.json<{ project_id?: string; title?: string }>()
+  const body  = await c.req.json<{ project_id?: string; title?: string }>().catch(() => ({} as { project_id?: string; title?: string }))
 
-  if (!body.project_id && !body.title) {
-    return c.json({ error: 'Either project_id (existing project) or title (new project) is required' }, 400)
+  // project_id priority: body → workspace credential → error
+  const resolvedProjectId = body.project_id ?? creds.githubProjectId ?? null
+
+  if (!resolvedProjectId && !body.title) {
+    return c.json({ error: 'Provide project_id, or set github_project_id on the workspace, or provide title to create a new project' }, 400)
   }
 
   let projectId: string
   let projectUrl: string
   let projectNumber: number
 
-  if (body.project_id) {
+  if (resolvedProjectId) {
     // Use existing project — fetch its details
     const data = await githubGraphQL<{
       node: { id: string; number: number; url: string; title: string }
     }>(
       `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id number url title } } }`,
-      { id: body.project_id }, creds
+      { id: resolvedProjectId }, creds
     )
-    if (!data.node?.id) return c.json({ error: `Project '${body.project_id}' not found or not accessible` }, 404)
+    if (!data.node?.id) return c.json({ error: `Project '${resolvedProjectId}' not found or not accessible` }, 404)
     projectId     = data.node.id
     projectUrl    = data.node.url
     projectNumber = data.node.number
