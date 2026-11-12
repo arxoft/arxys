@@ -250,75 +250,144 @@ githubProjectRoutes.post('/', async (c) => {
 
 // ---------------------------------------------------------------------------
 // POST /github/project/bootstrap
-// Creates project + arxys Status field with semantic colors. Saves project_id.
-// Body: { title: string }
+// Provisions the standard arxys field schema on a project.
+// If project_id is provided → provisions fields on that existing project.
+// If only title is provided → creates a new project first, then provisions.
+// Mirrors Notion's db bootstrap: additive, safe to re-run.
+// Body: { project_id?: string, title?: string }
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/bootstrap', async (c) => {
   const creds = c.get('credentials')
   const ws    = c.get('workspace')
-  const body  = await c.req.json<{ title: string }>()
-  if (!body.title) return c.json({ error: 'title is required' }, 400)
+  const body  = await c.req.json<{ project_id?: string; title?: string }>()
 
-  const owner = ownerFromRepo(ws.github_repo)
-  let ownerId: string
-  try {
-    ownerId = await getOrgNodeId(owner, creds)
-  } catch {
-    ownerId = await getViewerNodeId(creds)
+  if (!body.project_id && !body.title) {
+    return c.json({ error: 'Either project_id (existing project) or title (new project) is required' }, 400)
   }
 
-  const createData = await githubGraphQL<{
-    createProjectV2: { projectV2: { id: string; number: number; url: string } }
+  let projectId: string
+  let projectUrl: string
+  let projectNumber: number
+
+  if (body.project_id) {
+    // Use existing project — fetch its details
+    const data = await githubGraphQL<{
+      node: { id: string; number: number; url: string; title: string }
+    }>(
+      `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id number url title } } }`,
+      { id: body.project_id }, creds
+    )
+    if (!data.node?.id) return c.json({ error: `Project '${body.project_id}' not found or not accessible` }, 404)
+    projectId     = data.node.id
+    projectUrl    = data.node.url
+    projectNumber = data.node.number
+  } else {
+    // Create a new project
+    const owner = ownerFromRepo(ws.github_repo)
+    let ownerId: string
+    try {
+      ownerId = await getOrgNodeId(owner, creds)
+    } catch {
+      ownerId = await getViewerNodeId(creds)
+    }
+    const createData = await githubGraphQL<{
+      createProjectV2: { projectV2: { id: string; number: number; url: string } }
+    }>(
+      `mutation($ownerId: ID!, $title: String!) {
+        createProjectV2(input: { ownerId: $ownerId, title: $title }) {
+          projectV2 { id number url }
+        }
+      }`,
+      { ownerId, title: body.title }, creds
+    )
+    projectId     = createData.createProjectV2.projectV2.id
+    projectUrl    = createData.createProjectV2.projectV2.url
+    projectNumber = createData.createProjectV2.projectV2.number
+  }
+
+  // Fetch existing field names to avoid duplicates (safe to re-run)
+  const existingData = await githubGraphQL<{
+    node: { fields: { nodes: Array<{ __typename: string; name: string }> } }
   }>(
-    `mutation($ownerId: ID!, $title: String!) {
-      createProjectV2(input: { ownerId: $ownerId, title: $title }) {
-        projectV2 { id number url }
+    `query($id: ID!) {
+      node(id: $id) {
+        ... on ProjectV2 { fields(first: 50) { nodes { __typename ... on ProjectV2Field { name } ... on ProjectV2SingleSelectField { name } ... on ProjectV2IterationField { name } } } }
       }
     }`,
-    { ownerId, title: body.title }, creds
+    { id: projectId }, creds
   )
-  const project = createData.createProjectV2.projectV2
+  const existingNames = new Set(existingData.node.fields.nodes.map((f) => f.name))
 
-  // Status field with semantic colors (mirrors Notion colors)
-  const fieldData = await githubGraphQL<{
-    createProjectV2Field: { projectV2Field: { id: string } }
-  }>(
-    `mutation($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
-      createProjectV2Field(input: {
-        projectId: $projectId,
-        dataType: SINGLE_SELECT,
-        name: $name,
-        singleSelectOptions: $options
-      }) {
-        projectV2Field { ... on ProjectV2SingleSelectField { id name } }
-      }
-    }`,
-    {
-      projectId: project.id,
-      name:      'Status',
-      options:   ARXYS_STATUSES.map((name) => ({
-        name,
-        color:       STATUS_COLORS[name] ?? 'GRAY',
-        description: '',
-      })),
-    },
-    creds
-  )
-  const fieldId = fieldData.createProjectV2Field.projectV2Field.id
+  type FieldResult = { name: string; id: string }
+  const provisioned: FieldResult[] = []
 
-  // Persist the project ID back to the workspace row
+  // Helper to create a single-select field
+  async function addSingleSelect(name: string, options: Array<{ name: string; color: string }>) {
+    if (existingNames.has(name)) return
+    const data = await githubGraphQL<{
+      createProjectV2Field: { projectV2Field: { id: string; name: string } }
+    }>(
+      `mutation($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
+        createProjectV2Field(input: { projectId: $projectId, dataType: SINGLE_SELECT, name: $name, singleSelectOptions: $options }) {
+          projectV2Field { ... on ProjectV2SingleSelectField { id name } }
+        }
+      }`,
+      { projectId, name, options: options.map((o) => ({ ...o, description: '' })) },
+      creds
+    )
+    provisioned.push(data.createProjectV2Field.projectV2Field)
+  }
+
+  // Helper to create a text/number/date field
+  async function addField(name: string, dataType: 'TEXT' | 'NUMBER' | 'DATE') {
+    if (existingNames.has(name)) return
+    const data = await githubGraphQL<{
+      createProjectV2Field: { projectV2Field: { id: string; name: string } }
+    }>(
+      `mutation($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!) {
+        createProjectV2Field(input: { projectId: $projectId, dataType: $dataType, name: $name }) {
+          projectV2Field { ... on ProjectV2Field { id name } }
+        }
+      }`,
+      { projectId, name, dataType }, creds
+    )
+    provisioned.push(data.createProjectV2Field.projectV2Field)
+  }
+
+  // Provision all fields (sequential — GitHub GraphQL doesn't support batched mutations well)
+  await addSingleSelect('Status', ARXYS_STATUSES.map((name) => ({
+    name, color: STATUS_COLORS[name] ?? 'GRAY',
+  })))
+
+  await addSingleSelect('Priority', [
+    { name: 'Critical', color: 'RED'    },
+    { name: 'High',     color: 'ORANGE' },
+    { name: 'Medium',   color: 'YELLOW' },
+    { name: 'Low',      color: 'GRAY'   },
+  ])
+
+  await addField('Effort',        'NUMBER')
+  await addField('Due Date',      'DATE')
+  await addField('Git Branch',    'TEXT')
+  await addField('Pull Request',  'TEXT')
+  await addField('Review round',  'NUMBER')
+  await addField('Tags',          'TEXT')
+  await addField('Notes',         'TEXT')
+  await addField('URL',           'TEXT')
+
+  // Persist the project ID to the workspace
   await c.env.DB
     .prepare(`UPDATE workspaces SET github_project_id = ? WHERE id = ?`)
-    .bind(project.id, ws.id)
+    .bind(projectId, ws.id)
     .run()
 
   return c.json({
-    ok:              true,
-    project_id:      project.id,
-    number:          project.number,
-    url:             project.url,
-    status_field_id: fieldId,
-    statuses:        ARXYS_STATUSES,
+    ok:          true,
+    project_id:  projectId,
+    number:      projectNumber,
+    url:         projectUrl,
+    provisioned: provisioned.map((f) => f.name),
+    skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)), // built-in fields
   }, 201)
 })
 
