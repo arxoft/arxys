@@ -149,6 +149,7 @@ export function VentureDetail() {
 
   // Dialog refs
   const newWsRef    = useRef<HTMLDialogElement>(null)
+  const editWsRef   = useRef<HTMLDialogElement>(null)
   const newVmRef    = useRef<HTMLDialogElement>(null)
   const editVmRef   = useRef<HTMLDialogElement>(null)
   const addWsmRef   = useRef<HTMLDialogElement>(null)
@@ -168,6 +169,14 @@ export function VentureDetail() {
   })
   const [addWsmTarget, setAddWsmTarget] = useState<string>('')
   const [addWsmForm,   setAddWsmForm]   = useState({ member_id: '', workspace_role: 'member' })
+
+  // Edit workspace
+  const [editWsTarget, setEditWsTarget] = useState<Workspace | null>(null)
+  const [editWsForm,   setEditWsForm]   = useState({
+    display_name: '', github_repo: '',
+    notion_api_key: '', notion_database_id: '',
+    github_project_id: '', slack_channel_id: '',
+  })
 
   const [saving, setSaving] = useState(false)
   const [msg,    setMsg]    = useState('')
@@ -219,6 +228,43 @@ export function VentureDetail() {
       newWsRef.current?.close()
       setWsForm({ id: '', display_name: '', github_repo: '', notion_api_key: '', notion_database_id: '', github_project_id: '', slack_channel_id: '' })
       load()
+    } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Error') }
+    finally { setSaving(false) }
+  }
+
+  // ── Edit workspace ────────────────────────────────────────────────────────
+  function openEditWs(ws: Workspace) {
+    setEditWsTarget(ws)
+    setEditWsForm({
+      display_name:       ws.display_name,
+      github_repo:        ws.github_repo,
+      notion_api_key:     ws.notion_api_key     ?? '',
+      notion_database_id: ws.notion_database_id ?? '',
+      github_project_id:  ws.github_project_id  ?? '',
+      slack_channel_id:   ws.slack_channel_id   ?? '',
+    })
+    setMsg(''); editWsRef.current?.showModal()
+  }
+
+  async function saveEditWs(e: React.FormEvent) {
+    e.preventDefault(); if (!editWsTarget) return
+    setSaving(true); setMsg('')
+    try {
+      const hasNotion = !!(editWsForm.notion_api_key && editWsForm.notion_database_id)
+      const hasGithub = !!editWsForm.github_project_id
+      const boardType = hasNotion && hasGithub ? 'both' : hasGithub ? 'github' : 'notion'
+      await api.workspaces.update(editWsTarget.id, {
+        display_name:       editWsForm.display_name       || undefined,
+        github_repo:        editWsForm.github_repo        || undefined,
+        board_type:         boardType,
+        notion_api_key:     editWsForm.notion_api_key     || null,
+        notion_database_id: editWsForm.notion_database_id || null,
+        github_project_id:  editWsForm.github_project_id  || null,
+        slack_channel_id:   editWsForm.slack_channel_id   || null,
+      })
+      setMsg('Saved.')
+      load()
+      setTimeout(() => editWsRef.current?.close(), 800)
     } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Error') }
     finally { setSaving(false) }
   }
@@ -303,6 +349,7 @@ export function VentureDetail() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const wf  = (k: keyof typeof wsForm)     => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setWsForm(p => ({ ...p, [k]: e.target.value }))
+  const ewf = (k: keyof typeof editWsForm) => (e: React.ChangeEvent<HTMLInputElement>)                     => setEditWsForm(p => ({ ...p, [k]: e.target.value }))
   const vmf = (k: keyof typeof vmForm)     => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setVmForm(p => ({ ...p, [k]: e.target.value }))
   const evf = (k: keyof typeof editVmForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setEditVmForm(p => ({ ...p, [k]: e.target.value }))
   const awf = (k: keyof typeof addWsmForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setAddWsmForm(p => ({ ...p, [k]: e.target.value }))
@@ -383,7 +430,13 @@ export function VentureDetail() {
                   <span className="mono" style={{ fontSize: 11 }}>{ws.id}</span>
                 </div>
               </div>
-              <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  style={{ fontSize: 11 }}
+                  onClick={e => { e.stopPropagation(); openEditWs(ws) }}
+                >Edit</button>
+                <span style={{ color: 'var(--muted)', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+              </div>
             </div>
 
             {/* Workspace detail */}
@@ -597,6 +650,31 @@ export function VentureDetail() {
           </div>
         </form>
       </dialog>
+
+      {/* Edit workspace */}
+      <dialog ref={editWsRef}>
+        <h3>Edit {editWsTarget?.id}</h3>
+        <form onSubmit={saveEditWs}>
+          <div className="field"><label>Display name</label>
+            <input required value={editWsForm.display_name} onChange={ewf('display_name')} placeholder="Backend" /></div>
+          <div className="field"><label>GitHub repo (org/repo)</label>
+            <input required value={editWsForm.github_repo} onChange={ewf('github_repo')} placeholder="arxoft/backend" /></div>
+          <div className="field"><label>Notion API key</label>
+            <input value={editWsForm.notion_api_key} onChange={ewf('notion_api_key')} placeholder="ntn_..." /></div>
+          <div className="field"><label>Notion database ID</label>
+            <input value={editWsForm.notion_database_id} onChange={ewf('notion_database_id')} placeholder="3d2f1c05..." /></div>
+          <div className="field"><label>GitHub Project ID</label>
+            <input value={editWsForm.github_project_id} onChange={ewf('github_project_id')} placeholder="PVT_…" /></div>
+          <div className="field"><label>Slack channel ID <span style={{ color: 'var(--muted)', fontWeight: 'normal' }}>(optional)</span></label>
+            <input value={editWsForm.slack_channel_id} onChange={ewf('slack_channel_id')} placeholder="C0XXXXXXX" /></div>
+          {msg && <div className={msg === 'Saved.' ? 'success' : 'error'}>{msg}</div>}
+          <div className="actions">
+            <button type="button" onClick={() => editWsRef.current?.close()}>Cancel</button>
+            <button type="submit" className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </form>
+      </dialog>
+
     </div>
   )
 }
