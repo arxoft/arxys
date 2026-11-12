@@ -113,7 +113,7 @@ export interface Venture {
 }
 export interface Workspace {
   id: string; venture_id: string; display_name: string
-  github_repo: string; board_type: 'notion' | 'github' | 'both'
+  github_repo: string
   notion_api_key: string | null
   notion_database_id: string | null
   github_project_id: string | null

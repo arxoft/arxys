@@ -12,7 +12,7 @@ export type Variables = {
   member:         { id: string; display_name: string }
   workspace:      {
     id: string; venture_id: string; display_name: string
-    github_repo: string; board_type: 'notion' | 'github' | 'both'
+    github_repo: string
     notion_api_key: string | null
     notion_database_id: string | null
     github_project_id: string | null

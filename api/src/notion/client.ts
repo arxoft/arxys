@@ -8,7 +8,7 @@ import type { Credentials } from '../types'
 // Guard — call at the top of any Notion route handler
 export function requireNotionCreds(creds: Credentials): { notionApiKey: string; notionDatabaseId: string } {
   if (!creds.notionApiKey || !creds.notionDatabaseId) {
-    throw new Error('This workspace is not configured for Notion. Board type is GitHub.')
+    throw new Error('This workspace has no Notion credentials configured.')
   }
   return { notionApiKey: creds.notionApiKey, notionDatabaseId: creds.notionDatabaseId }
 }

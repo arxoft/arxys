@@ -125,7 +125,7 @@ adminRoutes.post('/ventures', async (c) => {
 
 adminRoutes.get('/workspaces', async (c) => {
   const rows = await c.env.DB
-    .prepare('SELECT id, venture_id, display_name, github_repo, board_type, notion_database_id, github_project_id FROM workspaces')
+    .prepare('SELECT id, venture_id, display_name, github_repo, notion_database_id, github_project_id FROM workspaces')
     .all()
   return c.json(rows.results)
 })
@@ -212,7 +212,6 @@ adminRoutes.patch('/workspaces/:workspace_id', async (c) => {
   const workspaceId = c.req.param('workspace_id')
   const body = await c.req.json<{
     display_name?: string
-    board_type?: 'notion' | 'github' | 'both'
     notion_api_key?: string
     notion_database_id?: string
     github_project_id?: string
@@ -223,7 +222,6 @@ adminRoutes.patch('/workspaces/:workspace_id', async (c) => {
   const values: unknown[] = []
 
   if (body.display_name       !== undefined) { fields.push('display_name = ?');       values.push(body.display_name) }
-  if (body.board_type         !== undefined) { fields.push('board_type = ?');         values.push(body.board_type) }
   if (body.notion_api_key     !== undefined) { fields.push('notion_api_key = ?');     values.push(body.notion_api_key || null) }
   if (body.notion_database_id !== undefined) { fields.push('notion_database_id = ?'); values.push(body.notion_database_id || null) }
   if (body.github_project_id  !== undefined) { fields.push('github_project_id = ?');  values.push(body.github_project_id || null) }
@@ -244,31 +242,18 @@ adminRoutes.post('/workspaces', async (c) => {
   const body = await c.req.json<{
     id: string; venture_id: string; display_name: string
     github_repo: string
-    board_type?: 'notion' | 'github' | 'both'
     notion_api_key?: string; notion_database_id?: string
     github_project_id?: string
     slack_channel_id?: string
   }>()
 
-  const boardType = body.board_type ?? 'notion'
-
-  const wantsNotion = boardType === 'notion' || boardType === 'both'
-  const wantsGithub = boardType === 'github' || boardType === 'both'
-
-  if (wantsNotion && (!body.notion_api_key || !body.notion_database_id)) {
-    return c.json({ error: 'notion_api_key and notion_database_id are required when board_type includes Notion' }, 400)
-  }
-  if (wantsGithub && !body.github_project_id) {
-    return c.json({ error: 'github_project_id is required when board_type includes GitHub (or leave blank and run /v1/github/project/bootstrap after)' }, 400)
-  }
-
   await c.env.DB
     .prepare(`INSERT INTO workspaces
-              (id, venture_id, display_name, github_repo, board_type,
+              (id, venture_id, display_name, github_repo,
                notion_api_key, notion_database_id, github_project_id, slack_channel_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
-      body.id, body.venture_id, body.display_name, body.github_repo, boardType,
+      body.id, body.venture_id, body.display_name, body.github_repo,
       body.notion_api_key ?? null, body.notion_database_id ?? null,
       body.github_project_id ?? null, body.slack_channel_id ?? null
     )

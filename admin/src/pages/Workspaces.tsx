@@ -19,15 +19,6 @@ const emptyForm: WorkspaceForm = {
   github_project_id: '', slack_channel_id: '',
 }
 
-/** Derive board_type from which fields are filled in. */
-function deriveBoardType(f: { notion_api_key: string; notion_database_id: string; github_project_id: string }): 'notion' | 'github' | 'both' {
-  const hasNotion = !!(f.notion_api_key && f.notion_database_id)
-  const hasGithub = !!f.github_project_id
-  if (hasNotion && hasGithub) return 'both'
-  if (hasGithub) return 'github'
-  return 'notion'
-}
-
 export function Workspaces() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [ventures,   setVentures]   = useState<{ id: string; display_name: string }[]>([])
@@ -83,13 +74,11 @@ export function Workspaces() {
     e.preventDefault()
     setSaving(true); setMsg('')
     try {
-      const boardType = deriveBoardType(form)
       await api.workspaces.create({
         id:           form.id,
         venture_id:   form.venture_id,
         display_name: form.display_name,
         github_repo:  form.github_repo,
-        board_type:   boardType,
         notion_api_key:     form.notion_api_key     || null,
         notion_database_id: form.notion_database_id || null,
         github_project_id:  form.github_project_id  || null,
@@ -148,11 +137,9 @@ export function Workspaces() {
     if (!editingWs) return
     setSaving(true); setMsg('')
     try {
-      const boardType = deriveBoardType(editForm)
       await api.workspaces.update(editingWs.id, {
         display_name:       editForm.display_name       || undefined,
         github_repo:        editForm.github_repo        || undefined,
-        board_type:         boardType,
         notion_api_key:     editForm.notion_api_key     || null,
         notion_database_id: editForm.notion_database_id || null,
         github_project_id:  editForm.github_project_id  || null,
@@ -214,11 +201,6 @@ export function Workspaces() {
     setMemForm(p => ({ ...p, [k]: e.target.value }))
 
   const ventureName = (id: string) => ventures.find(v => v.id === id)?.display_name ?? id
-  const boardLabel  = (ws: Workspace) => {
-    if (ws.board_type === 'both')   return '📋+⚙ Notion & GitHub'
-    if (ws.board_type === 'github') return '⚙ GitHub'
-    return '📋 Notion'
-  }
 
   return (
     <div>
@@ -238,9 +220,8 @@ export function Workspaces() {
             <h3>{w.display_name}</h3>
             <span className="badge">{w.id}</span>
             <span className="badge">{ventureName(w.venture_id)}</span>
-            <span className="badge" style={{ background: w.board_type === 'github' ? 'var(--accent, #238636)' : w.board_type === 'both' ? 'var(--accent2, #6f42c1)' : undefined }}>
-              {boardLabel(w)}
-            </span>
+            {w.notion_database_id  && <span className="badge">📋 Notion</span>}
+            {w.github_project_id   && <span className="badge" style={{ background: 'var(--accent, #238636)' }}>⚙ GitHub</span>}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               <button style={{ fontSize: 12 }} onClick={() => openEdit(w)}>Edit</button>
               <button style={{ fontSize: 12 }} onClick={() => {

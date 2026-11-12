@@ -33,14 +33,14 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   const workspace = await db
     .prepare(`
       SELECT w.id, w.venture_id, w.display_name, w.github_repo,
-             w.board_type, w.notion_api_key, w.notion_database_id,
+             w.notion_api_key, w.notion_database_id,
              w.github_project_id, w.slack_channel_id
       FROM workspaces w WHERE w.id = ?
     `)
     .bind(workspaceId)
     .first<{
       id: string; venture_id: string; display_name: string
-      github_repo: string; board_type: 'notion' | 'github' | 'both'
+      github_repo: string
       notion_api_key: string | null; notion_database_id: string | null
       github_project_id: string | null; slack_channel_id: string | null
     }>()

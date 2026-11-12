@@ -211,15 +211,11 @@ export function VentureDetail() {
   async function saveWs(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setMsg('')
     try {
-      const hasNotion = !!(wsForm.notion_api_key && wsForm.notion_database_id)
-      const hasGithub = !!wsForm.github_project_id
-      const boardType = hasNotion && hasGithub ? 'both' : hasGithub ? 'github' : 'notion'
       await api.workspaces.create({
         id:           wsForm.id,
         venture_id:   id!,
         display_name: wsForm.display_name,
         github_repo:  wsForm.github_repo,
-        board_type:   boardType,
         notion_api_key:     wsForm.notion_api_key     || null,
         notion_database_id: wsForm.notion_database_id || null,
         github_project_id:  wsForm.github_project_id  || null,
@@ -250,13 +246,9 @@ export function VentureDetail() {
     e.preventDefault(); if (!editWsTarget) return
     setSaving(true); setMsg('')
     try {
-      const hasNotion = !!(editWsForm.notion_api_key && editWsForm.notion_database_id)
-      const hasGithub = !!editWsForm.github_project_id
-      const boardType = hasNotion && hasGithub ? 'both' : hasGithub ? 'github' : 'notion'
       await api.workspaces.update(editWsTarget.id, {
         display_name:       editWsForm.display_name       || undefined,
         github_repo:        editWsForm.github_repo        || undefined,
-        board_type:         boardType,
         notion_api_key:     editWsForm.notion_api_key     || null,
         notion_database_id: editWsForm.notion_database_id || null,
         github_project_id:  editWsForm.github_project_id  || null,
@@ -442,11 +434,14 @@ export function VentureDetail() {
             {/* Workspace detail */}
             {isOpen && (
               <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px' }}>
-                {/* Notion card — only shown for notion-type workspaces */}
-                {ws.board_type === 'github'
-                  ? <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>⚙ GitHub Project board</div>
-                  : <NotionCard workspaceId={ws.id} databaseId={ws.notion_database_id ?? ''} />
+                {/* Notion card — shown when Notion credentials are present */}
+                {ws.notion_database_id
+                  ? <NotionCard workspaceId={ws.id} databaseId={ws.notion_database_id} />
+                  : null
                 }
+                {ws.github_project_id && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>⚙ GitHub Project: <span className="mono">{ws.github_project_id}</span></div>
+                )}
 
                 {/* Members */}
                 <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
