@@ -6,6 +6,7 @@ import { Layout }        from './components/Layout'
 import { Ventures }      from './pages/Ventures'
 import { VentureDetail } from './pages/VentureDetail'
 import { Members }       from './pages/Members'
+import { Workspaces }    from './pages/Workspaces'
 import './index.css'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route index element={<Navigate to="/ventures" replace />} />
           <Route path="ventures"        element={<Ventures />} />
           <Route path="ventures/:id"    element={<VentureDetail />} />
+          <Route path="workspaces"      element={<Workspaces />} />
           <Route path="members"         element={<Members />} />
         </Route>
       </Routes>

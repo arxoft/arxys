@@ -156,7 +156,7 @@ export function VentureDetail() {
   // Forms
   const [wsForm, setWsForm] = useState({
     id: '', display_name: '', github_repo: '',
-    board_type: 'notion', notion_api_key: '', notion_database_id: '',
+    notion_api_key: '', notion_database_id: '',
     github_project_id: '', slack_channel_id: '',
   })
   const [vmForm, setVmForm] = useState({
@@ -202,19 +202,22 @@ export function VentureDetail() {
   async function saveWs(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setMsg('')
     try {
+      const hasNotion = !!(wsForm.notion_api_key && wsForm.notion_database_id)
+      const hasGithub = !!wsForm.github_project_id
+      const boardType = hasNotion && hasGithub ? 'both' : hasGithub ? 'github' : 'notion'
       await api.workspaces.create({
         id:           wsForm.id,
         venture_id:   id!,
         display_name: wsForm.display_name,
         github_repo:  wsForm.github_repo,
-        board_type:   wsForm.board_type as 'notion' | 'github',
-        notion_api_key:     wsForm.board_type === 'notion' ? wsForm.notion_api_key     : null,
-        notion_database_id: wsForm.board_type === 'notion' ? wsForm.notion_database_id : null,
-        github_project_id:  wsForm.board_type === 'github' ? (wsForm.github_project_id || null) : null,
-        slack_channel_id:   wsForm.slack_channel_id || undefined,
+        board_type:   boardType,
+        notion_api_key:     wsForm.notion_api_key     || null,
+        notion_database_id: wsForm.notion_database_id || null,
+        github_project_id:  wsForm.github_project_id  || null,
+        slack_channel_id:   wsForm.slack_channel_id   || undefined,
       })
       newWsRef.current?.close()
-      setWsForm({ id: '', display_name: '', github_repo: '', board_type: 'notion', notion_api_key: '', notion_database_id: '', github_project_id: '', slack_channel_id: '' })
+      setWsForm({ id: '', display_name: '', github_repo: '', notion_api_key: '', notion_database_id: '', github_project_id: '', slack_channel_id: '' })
       load()
     } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Error') }
     finally { setSaving(false) }
@@ -500,26 +503,13 @@ export function VentureDetail() {
           <div className="field"><label>GitHub repo (org/repo)</label>
             <input required value={wsForm.github_repo} onChange={wf('github_repo')} placeholder="arxoft/backend" /></div>
 
-          <div className="field"><label>Board type</label>
-            <select value={wsForm.board_type} onChange={wf('board_type')}>
-              <option value="notion">📋 Notion</option>
-              <option value="github">⚙ GitHub Project</option>
-            </select></div>
+          <div className="field"><label>Notion API key</label>
+            <input value={wsForm.notion_api_key} onChange={wf('notion_api_key')} placeholder="ntn_..." /></div>
+          <div className="field"><label>Notion database ID</label>
+            <input value={wsForm.notion_database_id} onChange={wf('notion_database_id')} placeholder="3d2f1c05..." /></div>
 
-          {wsForm.board_type === 'notion' && <>
-            <div className="field"><label>Notion API key</label>
-              <input required value={wsForm.notion_api_key} onChange={wf('notion_api_key')} placeholder="ntn_..." /></div>
-            <div className="field"><label>Notion database ID</label>
-              <input required value={wsForm.notion_database_id} onChange={wf('notion_database_id')} placeholder="3d2f1c05..." /></div>
-          </>}
-
-          {wsForm.board_type === 'github' && <>
-            <div className="field"><label>GitHub Project ID (PVT_...)</label>
-              <input value={wsForm.github_project_id} onChange={wf('github_project_id')} placeholder="PVT_... (optional)" /></div>
-            <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: -8 }}>
-              Leave blank and run <span className="mono">POST /v1/github/project/bootstrap</span> to auto-create.
-            </p>
-          </>}
+          <div className="field"><label>GitHub Project ID</label>
+            <input value={wsForm.github_project_id} onChange={wf('github_project_id')} placeholder="PVT_… (leave blank to bootstrap later)" /></div>
 
           <div className="field"><label>Slack channel ID (optional, overrides venture default)</label>
             <input value={wsForm.slack_channel_id} onChange={wf('slack_channel_id')} placeholder="C0XXXXXXX" /></div>

@@ -3,16 +3,23 @@ import { api, type Workspace } from '../api'
 
 type WorkspaceForm = {
   id: string; venture_id: string; display_name: string; github_repo: string
-  use_notion: boolean; use_github: boolean
   notion_api_key: string; notion_database_id: string
   github_project_id: string; slack_channel_id: string
 }
 
 const emptyForm: WorkspaceForm = {
   id: '', venture_id: '', display_name: '', github_repo: '',
-  use_notion: true, use_github: false,
   notion_api_key: '', notion_database_id: '',
   github_project_id: '', slack_channel_id: '',
+}
+
+/** Derive board_type from which fields are filled in. */
+function deriveBoardType(form: WorkspaceForm): 'notion' | 'github' | 'both' {
+  const hasNotion = !!(form.notion_api_key && form.notion_database_id)
+  const hasGithub = !!form.github_project_id
+  if (hasNotion && hasGithub) return 'both'
+  if (hasGithub) return 'github'
+  return 'notion'
 }
 
 export function Workspaces() {
@@ -55,21 +62,17 @@ export function Workspaces() {
     setSaving(true)
     setMsg('')
     try {
-      const boardType =
-        form.use_notion && form.use_github ? 'both'
-        : form.use_github ? 'github'
-        : 'notion'
-
+      const boardType = deriveBoardType(form)
       const payload: Omit<Workspace, 'created_at'> = {
         id:           form.id,
         venture_id:   form.venture_id,
         display_name: form.display_name,
         github_repo:  form.github_repo,
         board_type:   boardType,
-        notion_api_key:     form.use_notion ? form.notion_api_key     : null,
-        notion_database_id: form.use_notion ? form.notion_database_id : null,
-        github_project_id:  form.use_github ? (form.github_project_id || null) : null,
-        slack_channel_id:   form.slack_channel_id || undefined,
+        notion_api_key:     form.notion_api_key     || null,
+        notion_database_id: form.notion_database_id || null,
+        github_project_id:  form.github_project_id  || null,
+        slack_channel_id:   form.slack_channel_id   || undefined,
       }
       await api.workspaces.create(payload)
       setMsg('Workspace created.')
@@ -84,20 +87,20 @@ export function Workspaces() {
   }
 
   async function testConnection() {
-    if (!form.id) { setTestMsg('Save workspace first, or test from the workspace detail after creation.'); return }
+    if (!form.id) { setTestMsg('Save workspace first, or test after creation.'); return }
     setTesting(true)
     setTestMsg('')
     try {
       const results: string[] = []
-      if (form.use_notion) {
+      if (form.notion_api_key && form.notion_database_id) {
         const r = await api.workspaces.notionTest(form.id)
         results.push(`✓ Notion — "${r.database_title}"`)
       }
-      if (form.use_github) {
+      if (form.github_project_id) {
         const r = await api.workspaces.githubProjectTest(form.id)
         results.push(`✓ GitHub Project — "${r.project.title}"`)
       }
-      setTestMsg(results.join('  ·  ') || 'No board type selected')
+      setTestMsg(results.join('  ·  ') || 'No board credentials provided')
     } catch (e) {
       setTestMsg(`✗ ${e instanceof Error ? e.message : 'Connection failed'}`)
     } finally {
@@ -123,8 +126,6 @@ export function Workspaces() {
 
   const f  = (k: keyof WorkspaceForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [k]: e.target.value }))
-  const toggle = (k: 'use_notion' | 'use_github') => () =>
-    setForm(p => ({ ...p, [k]: !p[k] }))
   const mf = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setMemForm(p => ({ ...p, [k]: e.target.value }))
 
@@ -198,44 +199,24 @@ export function Workspaces() {
             <input required value={form.github_repo} onChange={f('github_repo')} placeholder="arxoft/backend" />
           </div>
 
-          {/* Board type — both can be enabled simultaneously */}
-          <fieldset style={{ border: '1px solid var(--border, #333)', borderRadius: 6, padding: '10px 14px', marginBottom: 12 }}>
-            <legend style={{ fontSize: 13, padding: '0 6px', color: 'var(--muted)' }}>Board integrations</legend>
+          {/* Notion */}
+          <div className="field">
+            <label>Notion API key</label>
+            <input value={form.notion_api_key} onChange={f('notion_api_key')} placeholder="ntn_…" />
+          </div>
+          <div className="field">
+            <label>Notion database ID</label>
+            <input value={form.notion_database_id} onChange={f('notion_database_id')} placeholder="3d2f1c05…" />
+          </div>
 
-            {/* Notion toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
-              <input type="checkbox" checked={form.use_notion} onChange={toggle('use_notion')} />
-              <span>📋 Notion</span>
-            </label>
-            {form.use_notion && <>
-              <div className="field" style={{ marginLeft: 24 }}>
-                <label>Notion API key</label>
-                <input required value={form.notion_api_key} onChange={f('notion_api_key')} placeholder="ntn_..." />
-              </div>
-              <div className="field" style={{ marginLeft: 24 }}>
-                <label>Notion database ID</label>
-                <input required value={form.notion_database_id} onChange={f('notion_database_id')} placeholder="3d2f1c05..." />
-              </div>
-            </>}
-
-            {/* GitHub Projects toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: form.use_github ? 10 : 0 }}>
-              <input type="checkbox" checked={form.use_github} onChange={toggle('use_github')} />
-              <span>⚙ GitHub Project</span>
-            </label>
-            {form.use_github && <>
-              <div className="field" style={{ marginLeft: 24 }}>
-                <label>GitHub Project ID (PVT_...)</label>
-                <input value={form.github_project_id} onChange={f('github_project_id')} placeholder="PVT_... (optional)" />
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: -8, marginLeft: 24 }}>
-                Leave blank and run <span className="mono">POST /v1/github/project/bootstrap</span> to auto-create.
-              </p>
-            </>}
-          </fieldset>
+          {/* GitHub Projects */}
+          <div className="field">
+            <label>GitHub Project ID</label>
+            <input value={form.github_project_id} onChange={f('github_project_id')} placeholder="PVT_… (leave blank to bootstrap later)" />
+          </div>
 
           <div className="field">
-            <label>Slack channel ID (optional, overrides venture default)</label>
+            <label>Slack channel ID <span style={{ color: 'var(--muted)', fontWeight: 'normal' }}>(optional)</span></label>
             <input value={form.slack_channel_id} onChange={f('slack_channel_id')} placeholder="C0XXXXXXXX" />
           </div>
 

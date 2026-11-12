@@ -2,8 +2,9 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 
 const nav = [
-  { to: '/ventures', label: 'Ventures' },
-  { to: '/members',  label: 'Members'  },
+  { to: '/ventures',   label: 'Ventures'   },
+  { to: '/workspaces', label: 'Workspaces' },
+  { to: '/members',    label: 'Members'    },
 ]
 
 export function Layout() {

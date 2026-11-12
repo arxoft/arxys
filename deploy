@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+usage() {
+  echo "Usage: ./deploy <api|admin|all>"
+  exit 1
+}
+
+[[ $# -ne 1 ]] && usage
+TARGET="$1"
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+step() { echo -e "\n\033[1;34m▶ $*\033[0m"; }
+ok()   { echo -e "\033[1;32m✓ $*\033[0m"; }
+err()  { echo -e "\033[1;31m✗ $*\033[0m" >&2; exit 1; }
+
+# ── deploy api ───────────────────────────────────────────────────────────────
+
+deploy_api() {
+  cd "$REPO_ROOT/api"
+
+  step "Type-checking API..."
+  npx tsc --noEmit || err "TypeScript errors — fix before deploying."
+  ok "Type check passed."
+
+  step "Deploying API worker..."
+  npx wrangler deploy
+  ok "API deployed → https://arxysapis.arxoft.com"
+}
+
+# ── deploy admin ─────────────────────────────────────────────────────────────
+
+deploy_admin() {
+  cd "$REPO_ROOT/admin"
+
+  step "Building admin UI..."
+  npm run build || err "Build failed."
+  ok "Build succeeded."
+
+  step "Deploying admin worker..."
+  npx wrangler deploy
+  ok "Admin deployed → https://arxysadmin.arxoft.com"
+
+  # Re-assert API route — Cloudflare route registration is per-zone; a fresh
+  # admin deploy can displace the API route. Always redeploy API after admin.
+  step "Re-asserting API route (prevents route displacement)..."
+  cd "$REPO_ROOT/api"
+  npx wrangler deploy
+  ok "API route re-asserted."
+}
+
+# ── deploy all ───────────────────────────────────────────────────────────────
+
+deploy_all() {
+  deploy_api
+  deploy_admin  # already re-asserts API route at the end
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+case "$TARGET" in
+  api)   deploy_api   ;;
+  admin) deploy_admin ;;
+  all)   deploy_all   ;;
+  *)     usage        ;;
+esac
+
+echo -e "\n\033[1;32m✓ Done.\033[0m"
