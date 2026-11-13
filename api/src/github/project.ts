@@ -22,20 +22,6 @@ export const ARXYS_STATUSES = [
   'Icebox',
 ]
 
-// Status → GitHub Projects color mapping (mirrors Notion semantic colors)
-const STATUS_COLORS: Record<string, 'GRAY' | 'BLUE' | 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED' | 'PINK' | 'PURPLE'> = {
-  'Planning':            'GRAY',
-  'Backlog':             'GRAY',
-  'Up Next':             'ORANGE',
-  'In Progress':         'YELLOW',
-  'Pending Review':      'BLUE',
-  'Awaiting Deployment': 'PURPLE',
-  'Testing':             'PINK',
-  'Pending Acceptance':  'GREEN',
-  'Completed':           'GREEN',
-  'Cancelled':           'RED',
-  'Icebox':              'GRAY',
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,9 +69,9 @@ export async function getStatusField(projectId: string, creds: Credentials): Pro
     { projectId }, creds
   )
   const field = data.node.fields.nodes.find(
-    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'arxys Status'
+    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'Status'
   )
-  if (!field || !field.options) throw new Error('arxys Status field not found on project')
+  if (!field || !field.options) throw new Error('Status field not found on project')
   return { fieldId: field.id, options: field.options }
 }
 
@@ -113,7 +99,7 @@ async function getItemStatus(_projectId: string, itemId: string, creds: Credenti
     { itemId }, creds
   )
   const statusField = data.node.fieldValues.nodes.find(
-    (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'arxys Status'
+    (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
   )
   return statusField?.name ?? null
 }
@@ -358,10 +344,6 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   }
 
   // Provision all fields (sequential — GitHub GraphQL doesn't support batched mutations well)
-  await addSingleSelect('arxys Status', ARXYS_STATUSES.map((name) => ({
-    name, color: STATUS_COLORS[name] ?? 'GRAY',
-  })))
-
   await addSingleSelect('Priority', [
     { name: 'Critical', color: 'RED'    },
     { name: 'High',     color: 'ORANGE' },
@@ -375,8 +357,7 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   await addField('Pull Request',  'TEXT')
   await addField('Review round',  'NUMBER')
   await addField('Tags',          'TEXT')
-  await addField('Notes',         'TEXT')
-  await addField('URL',           'TEXT')
+  await addField('Description',   'TEXT')
 
   // Persist the project ID to the workspace
   await c.env.DB
@@ -390,7 +371,11 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
     number:      projectNumber,
     url:         projectUrl,
     provisioned: provisioned.map((f) => f.name),
-    skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)), // built-in fields
+    skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
+    manual_steps: {
+      status_field: 'GitHub does not allow API access to the built-in Status field. Add these options manually in the project settings:',
+      options: ARXYS_STATUSES,
+    },
   }, 201)
 })
 
@@ -474,7 +459,7 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
   let issues = allItems.map((item) => {
     const fvs = item.fieldValues.nodes
     const statusFv = fvs.find(
-      (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'arxys Status'
+      (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
     )
     // Collect all field values as a map for generic filtering
     const fields: Record<string, string> = {}
@@ -592,7 +577,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
     return c.json({ error: `Unknown value '${body.value}'. Valid: ${valid}` }, 400)
   }
 
-  const isStatusField = fieldData.node.field.name === 'arxys Status'
+  const isStatusField = fieldData.node.field.name === 'Status'
 
   // Capture old status before updating (for audit + Slack)
   const oldStatus = isStatusField ? await getItemStatus(projectId, itemId, creds) : null

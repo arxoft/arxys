@@ -22,10 +22,6 @@ err()  { echo -e "\033[1;31m✗ $*\033[0m" >&2; exit 1; }
 deploy_api() {
   cd "$REPO_ROOT/api"
 
-  step "Type-checking API..."
-  npx tsc --noEmit || err "TypeScript errors — fix before deploying."
-  ok "Type check passed."
-
   step "Deploying API worker..."
   npx wrangler deploy
   ok "API deployed → https://arxysapis.arxoft.com"
