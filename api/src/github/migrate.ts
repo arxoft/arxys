@@ -266,7 +266,7 @@ async function ensureStatusField(projectId: string, creds: Credentials): Promise
   )
 
   const existing = data.node.fields.nodes.find(
-    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'Status'
+    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'arxys Status'
   )
   if (existing) return existing.id
 
@@ -286,7 +286,7 @@ async function ensureStatusField(projectId: string, creds: Credentials): Promise
     }`,
     {
       projectId,
-      name:    'Status',
+      name:    'arxys Status',
       options: ARXYS_STATUSES.map((name) => ({ name, color: 'GRAY', description: '' })),
     },
     creds

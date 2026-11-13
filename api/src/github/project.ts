@@ -83,9 +83,9 @@ export async function getStatusField(projectId: string, creds: Credentials): Pro
     { projectId }, creds
   )
   const field = data.node.fields.nodes.find(
-    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'Status'
+    (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'arxys Status'
   )
-  if (!field || !field.options) throw new Error('Status field not found on project')
+  if (!field || !field.options) throw new Error('arxys Status field not found on project')
   return { fieldId: field.id, options: field.options }
 }
 
@@ -113,7 +113,7 @@ async function getItemStatus(_projectId: string, itemId: string, creds: Credenti
     { itemId }, creds
   )
   const statusField = data.node.fieldValues.nodes.find(
-    (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
+    (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'arxys Status'
   )
   return statusField?.name ?? null
 }
@@ -358,7 +358,7 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   }
 
   // Provision all fields (sequential — GitHub GraphQL doesn't support batched mutations well)
-  await addSingleSelect('Status', ARXYS_STATUSES.map((name) => ({
+  await addSingleSelect('arxys Status', ARXYS_STATUSES.map((name) => ({
     name, color: STATUS_COLORS[name] ?? 'GRAY',
   })))
 
@@ -474,7 +474,7 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
   let issues = allItems.map((item) => {
     const fvs = item.fieldValues.nodes
     const statusFv = fvs.find(
-      (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
+      (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'arxys Status'
     )
     // Collect all field values as a map for generic filtering
     const fields: Record<string, string> = {}
@@ -592,7 +592,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
     return c.json({ error: `Unknown value '${body.value}'. Valid: ${valid}` }, 400)
   }
 
-  const isStatusField = fieldData.node.field.name === 'Status'
+  const isStatusField = fieldData.node.field.name === 'arxys Status'
 
   // Capture old status before updating (for audit + Slack)
   const oldStatus = isStatusField ? await getItemStatus(projectId, itemId, creds) : null
