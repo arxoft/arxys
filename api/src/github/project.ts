@@ -90,7 +90,7 @@ async function getItemStatus(_projectId: string, itemId: string, creds: Credenti
           fieldValues(first: 20) {
             nodes {
               __typename
-              ... on ProjectV2ItemFieldSingleSelectValue { name field { name } }
+              ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
             }
           }
         }
@@ -438,9 +438,9 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
                 fieldValues(first: 20) {
                   nodes {
                     __typename
-                    ... on ProjectV2ItemFieldSingleSelectValue { name field { name } }
-                    ... on ProjectV2ItemFieldTextValue         { text field { name } }
-                    ... on ProjectV2ItemFieldNumberValue       { number field { name } }
+                    ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
+                    ... on ProjectV2ItemFieldTextValue         { text field { ... on ProjectV2Field { name } } }
+                    ... on ProjectV2ItemFieldNumberValue       { number field { ... on ProjectV2Field { name } } }
                   }
                 }
               }
@@ -554,48 +554,88 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
   }
 
   // Resolve option name → option ID
+  // Note: GitHub Projects v2 API dropped `field(id:)` — fetch all fields and match by ID in JS
   const fieldData = await githubGraphQL<{
-    node: { field: { name?: string; options: Array<{ id: string; name: string }> } }
+    node: {
+      fields: {
+        nodes: Array<{
+          __typename: string; id: string; name: string
+          options?: Array<{ id: string; name: string }>
+        }>
+      }
+    }
   }>(
-    `query($projectId: ID!, $fieldId: ID!) {
+    `query($projectId: ID!) {
       node(id: $projectId) {
         ... on ProjectV2 {
-          field(id: $fieldId) {
-            ... on ProjectV2SingleSelectField { name options { id name } }
+          fields(first: 50) {
+            nodes {
+              __typename
+              ... on ProjectV2SingleSelectField { id name options { id name } }
+              ... on ProjectV2Field             { id name }
+              ... on ProjectV2IterationField    { id name }
+            }
           }
         }
       }
     }`,
-    { projectId, fieldId: body.field_id }, creds
+    { projectId }, creds
   )
 
-  const option = fieldData.node.field.options.find(
-    (o) => o.name.toLowerCase() === body.value.toLowerCase()
-  )
-  if (!option) {
-    const valid = fieldData.node.field.options.map((o) => o.name).join(', ')
-    return c.json({ error: `Unknown value '${body.value}'. Valid: ${valid}` }, 400)
+  const matchedField = fieldData.node.fields.nodes.find((f) => f.id === body.field_id)
+  if (!matchedField) {
+    return c.json({ error: `Field '${body.field_id}' not found on project` }, 404)
   }
 
-  const isStatusField = fieldData.node.field.name === 'Status'
+  const isSingleSelect = matchedField.__typename === 'ProjectV2SingleSelectField'
+  const isStatusField  = matchedField.name === 'Status'
+
+  let option: { id: string; name: string } | undefined
+
+  if (isSingleSelect) {
+    option = matchedField.options?.find(
+      (o) => o.name.toLowerCase() === body.value.toLowerCase()
+    )
+    if (!option) {
+      const valid = (matchedField.options ?? []).map((o) => o.name).join(', ')
+      return c.json({ error: `Unknown value '${body.value}'. Valid: ${valid}` }, 400)
+    }
+  }
 
   // Capture old status before updating (for audit + Slack)
   const oldStatus = isStatusField ? await getItemStatus(projectId, itemId, creds) : null
 
-  // Apply the update
-  await githubGraphQL(
-    `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-      updateProjectV2ItemFieldValue(input: {
-        projectId: $projectId,
-        itemId:    $itemId,
-        fieldId:   $fieldId,
-        value:     { singleSelectOptionId: $optionId }
-      }) {
-        projectV2Item { id }
-      }
-    }`,
-    { projectId, itemId, fieldId: body.field_id, optionId: option.id }, creds
-  )
+  // Apply the update — value shape differs by field type
+  if (isSingleSelect && option) {
+    await githubGraphQL(
+      `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $projectId,
+          itemId:    $itemId,
+          fieldId:   $fieldId,
+          value:     { singleSelectOptionId: $optionId }
+        }) {
+          projectV2Item { id }
+        }
+      }`,
+      { projectId, itemId, fieldId: body.field_id, optionId: option.id }, creds
+    )
+  } else {
+    // TEXT / NUMBER / DATE fields
+    await githubGraphQL(
+      `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $projectId,
+          itemId:    $itemId,
+          fieldId:   $fieldId,
+          value:     { text: $text }
+        }) {
+          projectV2Item { id }
+        }
+      }`,
+      { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
+    )
+  }
 
   // Status change side-effects: audit comment on issue + Slack notification
   if (isStatusField) {
@@ -617,7 +657,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
     }
   }
 
-  return c.json({ ok: true, item_id: itemId, value: option.name })
+  return c.json({ ok: true, item_id: itemId, value: isSingleSelect ? option!.name : body.value })
 })
 
 // ---------------------------------------------------------------------------
