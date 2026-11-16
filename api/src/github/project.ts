@@ -356,8 +356,32 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   await addField('Git Branch',    'TEXT')
   await addField('Pull Request',  'TEXT')
   await addField('Review round',  'NUMBER')
-  await addField('Tags',          'TEXT')
   await addField('Description',   'TEXT')
+
+  // Create standard arxys labels on the workspace repo (idempotent — 422 on existing is ignored)
+  const ARXYS_LABELS = [
+    { name: 'has-migration',  color: 'd73a4a', description: 'Ships a DB schema change — run migration before/after deploy' },
+    { name: 'has-env-change', color: 'e4e669', description: 'Requires .env updates on the server before deploying' },
+    { name: 'coding',         color: '0075ca', description: 'Actively being implemented' },
+    { name: 'reviewed',       color: '0e8a16', description: 'Code review passed' },
+    { name: 'pending-merge',  color: '5319e7', description: 'Review PR is open, awaiting merge' },
+    { name: 'issue-persists', color: 'd73a4a', description: 'Major issue found — sent back to developer' },
+    { name: 'hotfix',         color: 'b60205', description: 'Fast-track critical production fix' },
+    { name: 'need-info',      color: 'e4e669', description: 'Blocked on missing information before work can start' },
+  ]
+
+  const labelsCreated: string[] = []
+  const labelsSkipped: string[] = []
+
+  for (const label of ARXYS_LABELS) {
+    try {
+      await githubPost(`/repos/${ws.github_repo}/labels`, creds, label)
+      labelsCreated.push(label.name)
+    } catch {
+      // 422 = already exists — skip silently
+      labelsSkipped.push(label.name)
+    }
+  }
 
   // Persist the project ID to the workspace
   await c.env.DB
@@ -372,6 +396,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
     url:         projectUrl,
     provisioned: provisioned.map((f) => f.name),
     skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
+    labels_created: labelsCreated,
+    labels_skipped: labelsSkipped,
     manual_steps: {
       status_field: 'GitHub does not allow API access to the built-in Status field. Add these options manually in the project settings:',
       options: ARXYS_STATUSES,
