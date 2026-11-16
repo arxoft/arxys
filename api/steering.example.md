@@ -146,6 +146,11 @@ Side states: **Icebox** (parked), **Cancelled** (terminal).
 <!-- GHP / Notion / Both -->
 _e.g. GitHub Projects only_
 
+### GitHub Project ID
+<!-- The PVT_... node ID for the GitHub Project linked to this workspace. -->
+<!-- Find it by calling: GET /v1/github/project/list (returns id, title, url for each project) -->
+_e.g. PVT_kwDO..._
+
 ### Branch Naming
 <!-- Default: <root>_<milestone>_<No.>-slug — override here if different -->
 _Using defaults._
