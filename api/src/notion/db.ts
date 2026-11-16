@@ -56,7 +56,9 @@ notionDbRoutes.post('/bootstrap', async (c) => {
     databaseId = row.database_id
   }
 
-  // Standard arxys schema — mirrors cli/lib/notion/db.sh cmd_db_bootstrap
+  // Standard arxys schema for Notion knowledge-base databases.
+  // Project-management-only fields (Depends on, Pull Request, Git Branch,
+  // Review round) are intentionally excluded — those belong in GHP.
   const properties: Record<string, unknown> = {
     'Status': {
       status: {
@@ -80,28 +82,17 @@ notionDbRoutes.post('/bootstrap', async (c) => {
         ]
       }
     },
-    'Priority':      { select:       { options: [
+    'Priority':    { select: { options: [
       { name: 'Critical', color: 'red'    },
       { name: 'High',     color: 'orange' },
       { name: 'Medium',   color: 'yellow' },
       { name: 'Low',      color: 'gray'   },
     ]}},
-    'Assignee':      { people: {} },
-    'Due Date':      { date: {} },
-    'Tags':          { multi_select: { options: [
-      { name: 'has-migration',  color: 'red'    },
-      { name: 'has-env-change', color: 'orange' },
-      { name: 'issue-persists', color: 'red'    },
-      { name: 'reviewed',       color: 'green'  },
-      { name: 'pending-merge',  color: 'blue'   },
-      { name: 'coding',         color: 'yellow' },
-    ]}},
-    'Description':   { rich_text: {} },
-    'Effort':        { number: { format: 'number' } },
-    'Git Branch':    { rich_text: {} },
-    'Pull Request':  { url: {} },
-    'Review round':  { number: { format: 'number' } },
-    'Depends on':    { relation: { database_id: databaseId, single_property: {} } },
+    'Assignee':    { people: {} },
+    'Due Date':    { date: {} },
+    'Tags':        { multi_select: { options: [] } },
+    'Description': { rich_text: {} },
+    'Effort':      { number: { format: 'number' } },
   }
 
   await notionPatch(`/databases/${databaseId}`, creds, { properties })

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { githubGet, githubPost, githubPatch } from './client'
+import { githubGet, githubPost, githubPatch, resolveRepo } from './client'
 import type { AppEnv } from '../types'
 
 export const githubIssueRoutes = new Hono<AppEnv>()
@@ -7,12 +7,11 @@ export const githubIssueRoutes = new Hono<AppEnv>()
 // GET /github/issue/list?repo=owner/repo[&state=open&label=bug&mine=1]
 githubIssueRoutes.get('/list', async (c) => {
   const creds = c.get('credentials')
-  const repo  = c.req.query('repo')
+  const ws    = c.get('workspace')
+  const repo  = resolveRepo(c.req.query('repo'), ws.github_repo)
   const state = c.req.query('state') ?? 'open'
   const label = c.req.query('label') ?? ''
   const mine  = c.req.query('mine') === '1'
-
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
 
   let url = `/repos/${repo}/issues?state=${state}&per_page=50&sort=updated`
   if (label) url += `&labels=${encodeURIComponent(label)}`
@@ -33,10 +32,9 @@ githubIssueRoutes.get('/list', async (c) => {
 // GET /github/issue/:number?repo=owner/repo
 githubIssueRoutes.get('/:number', async (c) => {
   const creds  = c.get('credentials')
-  const repo   = c.req.query('repo')
+  const ws     = c.get('workspace')
+  const repo   = resolveRepo(c.req.query('repo'), ws.github_repo)
   const number = c.req.param('number')
-
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
 
   const [issue, comments] = await Promise.all([
     githubGet(`/repos/${repo}/issues/${number}`, creds),
@@ -46,23 +44,25 @@ githubIssueRoutes.get('/:number', async (c) => {
   return c.json({ issue, comments })
 })
 
-// POST /github/issue?repo=owner/repo — create
+// POST /github/issue — create
 githubIssueRoutes.post('/', async (c) => {
   const creds = c.get('credentials')
+  const ws    = c.get('workspace')
   const body  = await c.req.json<{
-    repo: string; title: string; body_text?: string
+    repo?: string; title: string; body_text?: string
     label?: string; assignee?: string
   }>()
 
-  if (!body.repo)  return c.json({ error: 'repo is required' }, 400)
   if (!body.title) return c.json({ error: 'title is required' }, 400)
+
+  const repo = resolveRepo(body.repo, ws.github_repo)
 
   const payload: Record<string, unknown> = { title: body.title }
   if (body.body_text) payload.body      = body.body_text
   if (body.label)     payload.labels    = [body.label]
   if (body.assignee)  payload.assignees = [body.assignee]
 
-  const result = await githubPost(`/repos/${body.repo}/issues`, creds, payload) as
+  const result = await githubPost(`/repos/${repo}/issues`, creds, payload) as
     { number: number; html_url: string }
 
   return c.json({ number: result.number, url: result.html_url }, 201)
@@ -71,10 +71,9 @@ githubIssueRoutes.post('/', async (c) => {
 // PATCH /github/issue/:number?repo=owner/repo — update
 githubIssueRoutes.patch('/:number', async (c) => {
   const creds  = c.get('credentials')
-  const repo   = c.req.query('repo')
+  const ws     = c.get('workspace')
+  const repo   = resolveRepo(c.req.query('repo'), ws.github_repo)
   const number = c.req.param('number')
-
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
 
   const body = await c.req.json<Record<string, unknown>>()
   await githubPatch(`/repos/${repo}/issues/${number}`, creds, body)
@@ -85,10 +84,9 @@ githubIssueRoutes.patch('/:number', async (c) => {
 // POST /github/issue/:number/comment?repo=owner/repo
 githubIssueRoutes.post('/:number/comment', async (c) => {
   const creds  = c.get('credentials')
-  const repo   = c.req.query('repo')
+  const ws     = c.get('workspace')
+  const repo   = resolveRepo(c.req.query('repo'), ws.github_repo)
   const number = c.req.param('number')
-
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
 
   const body = await c.req.json<{ text: string }>()
   if (!body.text) return c.json({ error: 'text is required' }, 400)

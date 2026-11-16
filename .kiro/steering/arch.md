@@ -185,3 +185,49 @@ Venture → Client → Project → Workspace
 - Auth middleware gets one more join in the resolution chain
 - Two new admin pages (Client detail, Project detail)
 - Effort: ~10h
+
+---
+
+## GitHub Projects v2 GraphQL — Known Schema Constraints
+
+These rules apply to all queries/mutations in `api/src/github/project.ts`. Violating them produces 500s with GraphQL schema errors.
+
+### `field(id:)` does not exist
+
+`ProjectV2` has no `field(id: $fieldId)` resolver. To look up a field by ID, fetch all fields and match in JS:
+
+```graphql
+query($projectId: ID!) {
+  node(id: $projectId) {
+    ... on ProjectV2 {
+      fields(first: 50) {
+        nodes {
+          __typename
+          ... on ProjectV2SingleSelectField { id name options { id name } }
+          ... on ProjectV2Field             { id name }
+          ... on ProjectV2IterationField    { id name }
+        }
+      }
+    }
+  }
+}
+```
+
+Then: `fields.nodes.find(f => f.id === targetId)`.
+
+### `field` inside fieldValue nodes is a union — always use inline fragments
+
+`ProjectV2FieldConfiguration` is a union type. Selecting `field { name }` directly causes `"Selections can't be made directly on unions"`. Use inline fragments on the concrete type:
+
+```graphql
+... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
+... on ProjectV2ItemFieldTextValue         { text field { ... on ProjectV2Field { name } } }
+... on ProjectV2ItemFieldNumberValue       { number field { ... on ProjectV2Field { name } } }
+```
+
+### `updateProjectV2ItemFieldValue` — value shape by field type
+
+| Field type | Value input |
+|---|---|
+| `ProjectV2SingleSelectField` | `value: { singleSelectOptionId: $optionId }` |
+| `ProjectV2Field` (TEXT/NUMBER/DATE) | `value: { text: $text }` |

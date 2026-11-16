@@ -1,5 +1,19 @@
 import { Hono } from 'hono'
-import { notionPost, resolvePageId, notionGet } from './client'
+import { notionPost, notionGet } from './client'
+
+// ---------------------------------------------------------------------------
+// Resolve Notion unique_id No. → page ID (local — pages addressed by ID elsewhere)
+// ---------------------------------------------------------------------------
+async function resolvePageId(no: number, creds: import('../types').Credentials): Promise<string> {
+  const result = await notionPost(
+    `/databases/${creds.notionDatabaseId}/query`,
+    creds,
+    { filter: { property: 'ID', unique_id: { equals: no } } }
+  ) as { results: Array<{ id: string }> }
+  const pageId = result.results[0]?.id
+  if (!pageId) throw new Error(`No record found with No. = ${no}`)
+  return pageId
+}
 import { slackNotifyComment } from '../slack/notify'
 import type { AppEnv } from '../types'
 

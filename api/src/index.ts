@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth'
+import { taskRoutes }          from './task'
+import { workflowRoutes, getRulesContent, getSteeringContent } from './workflows'
 import { notionTaskRoutes }    from './notion/task'
 import { notionCommentRoutes } from './notion/comment'
 import { notionUserRoutes }    from './notion/user'
@@ -8,7 +10,6 @@ import { notionDbRoutes }      from './notion/db'
 import { githubPrRoutes }      from './github/pr'
 import { githubIssueRoutes }   from './github/issue'
 import { githubProjectRoutes } from './github/project'
-import { githubMigrateRoutes } from './github/migrate'
 import { githubRepoRoutes }    from './github/repo'
 import { githubUserRoutes }    from './github/user'
 import { slackRoutes }         from './slack/routes'
@@ -67,6 +68,16 @@ app.get('/', (c) => c.json({
   },
 
   endpoints: {
+    'workflow + rules': {
+      description: 'Workflow docs, task rules, and steering template — no auth required',
+      routes: [
+        'GET  /v1/workflow/list        → index of all workflows',
+        'GET  /v1/workflow/:name       → full workflow doc (development, review, hotfix, deployment, testing, planning, task-creation, bug-reporting, release, onboarding)',
+        'GET  /v1/rules               → task rules and hard git/production rules',
+        'GET  /v1/steering            → canonical steering.example.md template',
+      ],
+    },
+
     auth: {
       description: 'OTP email login — no headers required',
       routes: [
@@ -77,22 +88,32 @@ app.get('/', (c) => c.json({
       ],
     },
 
+    task: {
+      description: 'Unified task abstraction — dispatches to GHP or Notion based on workspace board_type',
+      routes: [
+        'GET    /v1/task/list                                             → list tasks (?mine=1 ?icebox=1 ?status=X)',
+        'GET    /v1/task/:ref                                             → task + comments (:ref = issue number or Notion No.)',
+        'POST   /v1/task              { title, body_text?, assignee? }   → create task',
+        'PATCH  /v1/task/:ref         { field, value }                   → update field (Status, Priority, etc.)',
+        'PATCH  /v1/task/:ref/assign  { assignees: [] }                  → assign (logins for GHP, emails for Notion)',
+        'PATCH  /v1/task/:ref/unassign { assignees: [] }                 → remove assignees',
+        'POST   /v1/task/:ref/comment { text }                           → add comment',
+      ],
+    },
+
     'notion/task': {
       description: 'Notion task management',
       routes: [
-        'GET  /v1/notion/task/list                                       → list tasks (excludes Icebox by default)',
-        'GET  /v1/notion/task/list?mine=1                                → tasks assigned to you',
-        'GET  /v1/notion/task/list?icebox=1                              → include Icebox tasks',
-        'GET  /v1/notion/task/list?review_queue=1                        → Pending Review, topological sort',
+        'GET  /v1/notion/task/list                                       → list records (excludes Icebox by default)',
+        'GET  /v1/notion/task/list?mine=1                                → records assigned to you',
+        'GET  /v1/notion/task/list?icebox=1                              → include Icebox records',
         'GET  /v1/notion/task/list?filter_prop=Status&filter_val=Backlog → filter by property',
         'GET  /v1/notion/task/list?sort=Priority&sort_dir=asc            → sort by property',
-        'GET  /v1/notion/task/:no                                        → task details + comments',
-        'POST /v1/notion/task                { title }                   → create task',
+        'GET  /v1/notion/task/:no                                        → record details + comments',
+        'POST /v1/notion/task                { title }                   → create record',
         'PATCH /v1/notion/task/:no           { property, value }         → update any property',
         'PATCH /v1/notion/task/:no/assign    { emails: [] }              → set assignees',
         'PATCH /v1/notion/task/:no/unassign  { emails: [] }              → remove assignees',
-        'POST /v1/notion/task/fix-titles                                 → dry-run: show drifted titles',
-        'POST /v1/notion/task/fix-titles?apply=1                         → repair (No.) prefixes',
       ],
     },
 
@@ -168,15 +189,6 @@ app.get('/', (c) => c.json({
       ],
     },
 
-    'github/migrate': {
-      description: 'One-way Notion → GitHub Project migration',
-      routes: [
-        'POST /v1/github/migrate/notion-to-project                        → migrate open Notion tasks to GitHub Project',
-        'POST /v1/github/migrate/notion-to-project?dry_run=1              → preview migration without writing',
-        'POST /v1/github/migrate/notion-to-project?all=1                  → include Completed + Cancelled tasks',
-      ],
-    },
-
     'github/repo': {
       description: 'GitHub repositories',
       routes: [
@@ -211,11 +223,19 @@ app.get('/', (c) => c.json({
 app.route('/auth', authRoutes)
 
 // ---------------------------------------------------------------------------
+// Workflow, rules, and steering — no auth required
+// ---------------------------------------------------------------------------
+app.route('/v1/workflow', workflowRoutes)
+app.get('/v1/rules',    (c) => c.text(getRulesContent(),    200, { 'Content-Type': 'text/markdown; charset=utf-8' }))
+app.get('/v1/steering', (c) => c.text(getSteeringContent(), 200, { 'Content-Type': 'text/markdown; charset=utf-8' }))
+
+// ---------------------------------------------------------------------------
 // All operational routes require auth + workspace context
 // ---------------------------------------------------------------------------
 const api = new Hono<AppEnv>()
 api.use('*', authMiddleware)
 
+api.route('/task',           taskRoutes)
 api.route('/notion/task',    notionTaskRoutes)
 api.route('/notion/comment', notionCommentRoutes)
 api.route('/notion/user',    notionUserRoutes)
@@ -223,7 +243,6 @@ api.route('/notion/db',      notionDbRoutes)
 api.route('/github/pr',      githubPrRoutes)
 api.route('/github/issue',   githubIssueRoutes)
 api.route('/github/project', githubProjectRoutes)
-api.route('/github/migrate', githubMigrateRoutes)
 api.route('/github/repo',    githubRepoRoutes)
 api.route('/github/user',    githubUserRoutes)
 api.route('/slack',          slackRoutes)
@@ -238,6 +257,10 @@ app.route('/admin', adminRoutes)
 app.notFound((c) => c.json({ error: 'Not found' }, 404))
 app.onError((err, c) => {
   console.error(err)
+  const status = (err as Error & { status?: number }).status
+  if (status === 400 || status === 403 || status === 404) {
+    return c.json({ error: err.message }, status)
+  }
   return c.json({ error: err.message ?? 'Internal server error' }, 500)
 })
 

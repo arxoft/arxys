@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { githubGraphQL, githubGet, githubPost } from './client'
+import { githubGraphQL, githubGet, githubPost, resolveRepo } from './client'
 import { slackNotifyTaskStatus, slackNotifyTaskAssigned, slackNotifyComment } from '../slack/notify'
 import type { AppEnv, Credentials } from '../types'
 
@@ -511,15 +511,17 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/:projectId/issues', async (c) => {
   const creds     = c.get('credentials')
+  const ws        = c.get('workspace')
   const projectId = c.req.param('projectId')
-  const body      = await c.req.json<{ repo: string; issue_number: number }>()
+  const body      = await c.req.json<{ repo?: string; issue_number: number }>()
 
-  if (!body.repo || !body.issue_number) {
-    return c.json({ error: 'repo and issue_number are required' }, 400)
+  if (!body.issue_number) {
+    return c.json({ error: 'issue_number is required' }, 400)
   }
 
+  const repo  = resolveRepo(body.repo, ws.github_repo)
   const issue = await githubGet(
-    `/repos/${body.repo}/issues/${body.issue_number}`, creds
+    `/repos/${repo}/issues/${body.issue_number}`, creds
   ) as { node_id: string; number: number }
 
   const data = await githubGraphQL<{
@@ -622,19 +624,56 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
     )
   } else {
     // TEXT / NUMBER / DATE fields
-    await githubGraphQL(
-      `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
-        updateProjectV2ItemFieldValue(input: {
-          projectId: $projectId,
-          itemId:    $itemId,
-          fieldId:   $fieldId,
-          value:     { text: $text }
-        }) {
-          projectV2Item { id }
-        }
-      }`,
-      { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
-    )
+    // If the value is numeric, try number type first; fall back to text on error.
+    const numVal = parseFloat(body.value)
+    const isNumeric = !isNaN(numVal) && String(numVal) === body.value.trim()
+
+    if (isNumeric) {
+      try {
+        await githubGraphQL(
+          `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $num: Float!) {
+            updateProjectV2ItemFieldValue(input: {
+              projectId: $projectId,
+              itemId:    $itemId,
+              fieldId:   $fieldId,
+              value:     { number: $num }
+            }) {
+              projectV2Item { id }
+            }
+          }`,
+          { projectId, itemId, fieldId: body.field_id, num: numVal }, creds
+        )
+      } catch {
+        // Field is text type despite numeric value — fall through to text mutation
+        await githubGraphQL(
+          `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+            updateProjectV2ItemFieldValue(input: {
+              projectId: $projectId,
+              itemId:    $itemId,
+              fieldId:   $fieldId,
+              value:     { text: $text }
+            }) {
+              projectV2Item { id }
+            }
+          }`,
+          { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
+        )
+      }
+    } else {
+      await githubGraphQL(
+        `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: $projectId,
+            itemId:    $itemId,
+            fieldId:   $fieldId,
+            value:     { text: $text }
+          }) {
+            projectV2Item { id }
+          }
+        }`,
+        { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
+      )
+    }
   }
 
   // Status change side-effects: audit comment on issue + Slack notification
@@ -669,9 +708,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
 githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
   const creds   = c.get('credentials')
   const itemId  = c.req.param('itemId')
-  const body    = await c.req.json<{ repo: string; assignees: string[] }>()
+  const body    = await c.req.json<{ assignees: string[] }>()
 
-  if (!body.repo)            return c.json({ error: 'repo is required' }, 400)
   if (!body.assignees?.length) return c.json({ error: 'assignees array is required' }, 400)
 
   const issueRef = await getItemIssueRef(itemId, creds)
@@ -679,14 +717,14 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
 
   // Merge new assignees with existing ones
   const issue = await githubGet(
-    `/repos/${body.repo}/issues/${issueRef.number}`, creds
+    `/repos/${issueRef.repo}/issues/${issueRef.number}`, creds
   ) as { assignees: Array<{ login: string }> }
 
   const existing = issue.assignees.map((a) => a.login)
   const merged   = [...new Set([...existing, ...body.assignees])]
 
   await githubPost(
-    `/repos/${body.repo}/issues/${issueRef.number}/assignees`, creds,
+    `/repos/${issueRef.repo}/issues/${issueRef.number}/assignees`, creds,
     { assignees: body.assignees }
   )
 
@@ -712,15 +750,14 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
 githubProjectRoutes.patch('/:projectId/issues/:itemId/unassign', async (c) => {
   const creds  = c.get('credentials')
   const itemId = c.req.param('itemId')
-  const body   = await c.req.json<{ repo: string; assignees: string[] }>()
+  const body   = await c.req.json<{ assignees: string[] }>()
 
-  if (!body.repo)              return c.json({ error: 'repo is required' }, 400)
   if (!body.assignees?.length) return c.json({ error: 'assignees array is required' }, 400)
 
   const issueRef = await getItemIssueRef(itemId, creds)
   if (!issueRef) return c.json({ error: 'Could not resolve issue from project item' }, 404)
 
-  await fetch(`https://api.github.com/repos/${body.repo}/issues/${issueRef.number}/assignees`, {
+  await fetch(`https://api.github.com/repos/${issueRef.repo}/issues/${issueRef.number}/assignees`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${creds.githubToken}`,
@@ -744,23 +781,49 @@ githubProjectRoutes.post('/:projectId/issues/:number/comment', async (c) => {
   const creds  = c.get('credentials')
   const member = c.get('member')
   const number = parseInt(c.req.param('number'), 10)
-  const body   = await c.req.json<{ repo: string; text: string }>()
+  const body   = await c.req.json<{ text: string }>()
 
-  if (!body.repo) return c.json({ error: 'repo is required' }, 400)
   if (!body.text) return c.json({ error: 'text is required' }, 400)
 
-  const text = `(${member.id}) ${body.text}`
+  // Resolve the issue's actual repo from the project item
+  // This handles cross-repo projects correctly without requiring body.repo
+  const projectId = c.req.param('projectId')
+  // Find the item by issue number
+  type PageResult = { node: { items: { nodes: Array<{ id: string; content: { __typename: string; number: number; repository: { nameWithOwner: string } } | null }>; pageInfo: { hasNextPage: boolean; endCursor: string } } } }
+  let repo = ''
+  let cursor: string | null = null
+  outer: do {
+    const data: PageResult = await githubGraphQL<PageResult>(
+      `query($projectId: ID!, $cursor: String) {
+        node(id: $projectId) {
+          ... on ProjectV2 {
+            items(first: 100, after: $cursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes { id content { __typename ... on Issue { number repository { nameWithOwner } } } }
+            }
+          }
+        }
+      }`,
+      { projectId, cursor }, creds
+    )
+    for (const n of data.node.items.nodes) {
+      if (n.content?.__typename === 'Issue' && n.content.number === number) {
+        repo = n.content.repository.nameWithOwner
+        break outer
+      }
+    }
+    cursor = data.node.items.pageInfo.hasNextPage ? data.node.items.pageInfo.endCursor : null
+  } while (cursor)
 
+  if (!repo) return c.json({ error: `Issue #${number} not found in project` }, 404)
+
+  const text   = `(${member.id}) ${body.text}`
   const result = await githubPost(
-    `/repos/${body.repo}/issues/${number}/comments`, creds,
+    `/repos/${repo}/issues/${number}/comments`, creds,
     { body: text }
   ) as { id: number; html_url: string }
 
-  // Slack notification (mirrors Notion comment route)
-  const issue = await githubGet(
-    `/repos/${body.repo}/issues/${number}`, creds
-  ) as { title: string; html_url: string }
-
+  const issue = await githubGet(`/repos/${repo}/issues/${number}`, creds) as { title: string; html_url: string }
   await slackNotifyComment(number, issue.title, body.text, issue.html_url, creds)
 
   return c.json({ ok: true, id: result.id, url: result.html_url }, 201)

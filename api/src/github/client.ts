@@ -80,3 +80,29 @@ export async function githubGraphQL<T = unknown>(
 
   return json.data
 }
+
+// ---------------------------------------------------------------------------
+// Repo resolution helper
+//
+// Resolves the effective repo for a request and validates it is within
+// the workspace's allowed set.
+//
+// Rules:
+//   - If ?repo= is omitted, defaults to workspace.github_repo
+//   - Any explicit ?repo= must equal workspace.github_repo
+//     (workspace_repos table was removed in migration 0013)
+//   - Returns the validated repo string or throws a 403-worthy Error
+// ---------------------------------------------------------------------------
+export function resolveRepo(
+  requested: string | undefined,
+  workspaceRepo: string
+): string {
+  const repo = requested ?? workspaceRepo
+  if (repo !== workspaceRepo) {
+    throw Object.assign(
+      new Error(`Repo '${repo}' is not associated with this workspace. Expected: ${workspaceRepo}`),
+      { status: 403 }
+    )
+  }
+  return repo
+}

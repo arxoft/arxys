@@ -48,21 +48,6 @@ export const notionPatch = (path: string, creds: Credentials, body: unknown) =>
   notionRequest('PATCH', path, creds, body)
 
 // ---------------------------------------------------------------------------
-// Resolve task No. → Notion page ID
-// ---------------------------------------------------------------------------
-export async function resolvePageId(no: number, creds: Credentials): Promise<string> {
-  const result = await notionPost(
-    `/databases/${creds.notionDatabaseId}/query`,
-    creds,
-    { filter: { property: 'ID', unique_id: { equals: no } } }
-  ) as { results: Array<{ id: string }> }
-
-  const pageId = result.results[0]?.id
-  if (!pageId) throw new Error(`No task found with No. = ${no}`)
-  return pageId
-}
-
-// ---------------------------------------------------------------------------
 // Resolve email → Notion user ID
 // ---------------------------------------------------------------------------
 export async function resolveNotionUserId(

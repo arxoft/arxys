@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { githubGet } from './client'
+import { githubGet, resolveRepo } from './client'
 import type { AppEnv } from '../types'
 
 export const githubRepoRoutes = new Hono<AppEnv>()
@@ -7,8 +7,8 @@ export const githubRepoRoutes = new Hono<AppEnv>()
 // GET /github/repo/info?repo=owner/repo
 githubRepoRoutes.get('/info', async (c) => {
   const creds = c.get('credentials')
-  const repo  = c.req.query('repo')
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
+  const ws    = c.get('workspace')
+  const repo  = resolveRepo(c.req.query('repo'), ws.github_repo)
   return c.json(await githubGet(`/repos/${repo}`, creds))
 })
 
@@ -38,10 +38,10 @@ githubRepoRoutes.get('/list', async (c) => {
 // GET /github/repo/commits?repo=owner/repo[&branch=main&limit=20]
 githubRepoRoutes.get('/commits', async (c) => {
   const creds  = c.get('credentials')
-  const repo   = c.req.query('repo')
+  const ws     = c.get('workspace')
+  const repo   = resolveRepo(c.req.query('repo'), ws.github_repo)
   const branch = c.req.query('branch') ?? 'main'
   const limit  = c.req.query('limit')  ?? '20'
-  if (!repo) return c.json({ error: 'repo query param required' }, 400)
 
   return c.json(await githubGet(
     `/repos/${repo}/commits?sha=${branch}&per_page=${limit}`, creds
