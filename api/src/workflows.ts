@@ -873,45 +873,21 @@ When in doubt — read the task, read the comments, read the existing code. Ask 
 
 const STEERING_CONTENT = `# arxys — Agent Instructions (API Edition)
 
-This is the canonical steering template. Fetch it fresh to check if your local copy is outdated:
+**arxys** is the Arxoft workspace management API. It wraps GitHub Projects, Notion, and GitHub operations behind a single authenticated HTTP interface.
+
+The canonical version of this file is always available at:
 
 \`\`\`http
 GET https://arxysapis.arxoft.com/v1/steering
 \`\`\`
 
-For full workflow and rules content:
-
-\`\`\`http
-GET https://arxysapis.arxoft.com/v1/rules
-GET https://arxysapis.arxoft.com/v1/workflow/list
-GET https://arxysapis.arxoft.com/v1/workflow/<name>
-\`\`\`
-
----
-
-## What arxys does
-
-Manages tasks on GitHub Projects and/or Notion, GitHub PRs/issues, and workspace operations behind a single authenticated HTTP interface.
-
----
-
-## API
-
-**Base URL:** \`https://arxysapis.arxoft.com\`
-**Full reference:** \`GET https://arxysapis.arxoft.com/\`
-
-### Authentication
-
-\`\`\`
-X-Api-Key:   axk_...
-X-Workspace: <workspace-slug>
-\`\`\`
+Fetch it if you suspect your local copy is outdated.
 
 ---
 
 ## Before Starting Any Task or PR Work
 
-**Always fetch the relevant workflow first:**
+**Always fetch the relevant workflow first. Do not proceed without reading it.**
 
 \`\`\`http
 GET https://arxysapis.arxoft.com/v1/workflow/development    ← picking up a task
@@ -920,15 +896,41 @@ GET https://arxysapis.arxoft.com/v1/workflow/hotfix         ← critical product
 GET https://arxysapis.arxoft.com/v1/workflow/planning       ← grooming the backlog
 GET https://arxysapis.arxoft.com/v1/workflow/deployment     ← deploying
 GET https://arxysapis.arxoft.com/v1/workflow/testing        ← testing after deploy
+GET https://arxysapis.arxoft.com/v1/workflow/task-creation  ← writing a new task
+GET https://arxysapis.arxoft.com/v1/workflow/bug-reporting  ← filing a bug
+GET https://arxysapis.arxoft.com/v1/workflow/release        ← cutting a release
+GET https://arxysapis.arxoft.com/v1/workflow/onboarding     ← new developer setup
 \`\`\`
 
-If you are new to this workspace, fetch onboarding first:
+For the full rules (git, production, task conventions):
 
 \`\`\`http
-GET https://arxysapis.arxoft.com/v1/workflow/onboarding
+GET https://arxysapis.arxoft.com/v1/rules
 \`\`\`
 
-Do not proceed without reading the relevant workflow. It contains the exact API calls, ordering, and rules for each phase.
+For a list of all available workflows:
+
+\`\`\`http
+GET https://arxysapis.arxoft.com/v1/workflow/list
+\`\`\`
+
+These endpoints require no authentication.
+
+---
+
+## API
+
+**Base URL:** \`https://arxysapis.arxoft.com\`
+**Full reference:** \`GET https://arxysapis.arxoft.com/\` — returns all endpoints, parameters, and auth details.
+
+### Authentication
+
+Every \`/v1/*\` request (except \`/v1/workflow/*\`, \`/v1/rules\`, \`/v1/steering\`) requires:
+
+\`\`\`
+X-Api-Key:   axk_...          # your personal arxys key
+X-Workspace: <workspace-slug> # e.g. arxoft-main, alqada, sensei
+\`\`\`
 
 ---
 
@@ -960,16 +962,18 @@ GET    /v1/github/pr/:number
 GET    /v1/github/pr/:number/files
 GET    /v1/github/pr/:number/status
 GET    /v1/github/pr/base-check?base=main&sha=<sha>
-POST   /v1/github/pr             { "title": "...", "head": "branch", "body_text": "..." }
-POST   /v1/github/pr/:number/merge
+POST   /v1/github/pr    { "title": "...", "head": "branch", "body_text": "...", "supersedes"?: number }
+POST   /v1/github/pr/:number/merge   { "method": "squash" }
 POST   /v1/github/pr/:number/review  { "action": "approve" }
 \`\`\`
 
-\`supersedes\` flag on \`POST /v1/github/pr\` closes the original PR and cross-links automatically.
+\`supersedes\` closes the original PR and cross-links it automatically.
 
 ---
 
 ## Git Repos in This Workspace
+
+<!-- List all repos, their root/default branch, and any notes. -->
 
 | Repo path | Root / default branch | Notes |
 |-----------|-----------------------|-------|
@@ -987,28 +991,31 @@ Side states: **Icebox** (parked), **Cancelled** (terminal).
 
 ---
 
-## Hard Rules
+## Hard Rules (summary — full version at /v1/rules)
 
-Fetch \`GET /v1/rules\` for the full list. Summary:
-
-- Never \`git add\`, \`git commit\`, \`git push\`, or delete branches — human-only.
+- Never \`git add\`, \`git commit\`, \`git push\`, or delete branches without explicit permission from the human.
 - Never commit on the root branch.
-- Never start a workflow without a clean working directory.
-- Always comment before changing Status.
+- Never start a workflow without a clean working directory in all repos.
+- Always comment before changing Status — the workflow doc shows the exact call order.
 - Never deploy to production.
+- Do not construct GitHub Projects v2 GraphQL queries directly — use the arxys API endpoints.
 
 ---
 
 ## Workspace-Specific Overrides
 
+<!-- Update this section for each project that copies this file -->
+
 ### Board in Use
-_GHP / Notion / Both_
+<!-- GHP / Notion / Both -->
+_e.g. GitHub Projects only_
 
 ### Branch Naming
-_Default: \`<root>_<milestone>_<No.>-slug\`_
+<!-- Default: <root>_<milestone>_<No.>-slug — override here if different -->
+_Using defaults._
 
 ### Coding Standards
-_See other steering files in \`.kiro/steering/\`_
+_See other steering files in \`.kiro/steering/\` for language and framework conventions._
 
 ### Deploy Process
 _Refer to project README or infrastructure docs._
