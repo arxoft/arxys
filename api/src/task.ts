@@ -158,8 +158,7 @@ taskRoutes.get('/list', async (c) => {
             }
           }
         }`,
-        { projectId, cursor }, creds
-      )
+        { projectId, cursor }, creds)
       const page = data.node.items
       allItems.push(...page.nodes.filter((n) => n.content?.__typename === 'Issue'))
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
@@ -318,8 +317,7 @@ taskRoutes.patch('/:ref', async (c) => {
           }
         }
       }`,
-      { projectId }, creds
-    )
+      { projectId }, creds)
 
     const matched = fieldData.node.fields.nodes.find(
       (f) => f.name.toLowerCase() === body.field.toLowerCase()
@@ -354,8 +352,7 @@ taskRoutes.patch('/:ref', async (c) => {
               }
             }
           }`,
-          { itemId: item.itemId }, creds
-        )
+          { itemId: item.itemId }, creds)
         const oldStatus = oldStatusData.node.fieldValues.nodes.find(
           (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
         )?.name ?? null
@@ -367,8 +364,7 @@ taskRoutes.patch('/:ref', async (c) => {
               value: { singleSelectOptionId: $optionId }
             }) { projectV2Item { id } }
           }`,
-          { projectId, itemId: item.itemId, fieldId: matched.id, optionId: option.id }, creds
-        )
+          { projectId, itemId: item.itemId, fieldId: matched.id, optionId: option.id }, creds)
 
         const repo = resolveRepo(undefined, ws.github_repo)
         await githubPost(`/repos/${repo}/issues/${ref}/comments`, creds, {
@@ -383,8 +379,7 @@ taskRoutes.patch('/:ref', async (c) => {
               value: { singleSelectOptionId: $optionId }
             }) { projectV2Item { id } }
           }`,
-          { projectId, itemId: item.itemId, fieldId: matched.id, optionId: option.id }, creds
-        )
+          { projectId, itemId: item.itemId, fieldId: matched.id, optionId: option.id }, creds)
       }
     } else {
       const numVal   = parseFloat(body.value)
@@ -398,8 +393,7 @@ taskRoutes.patch('/:ref', async (c) => {
                 value: { number: $num }
               }) { projectV2Item { id } }
             }`,
-            { projectId, itemId: item.itemId, fieldId: matched.id, num: numVal }, creds
-          )
+            { projectId, itemId: item.itemId, fieldId: matched.id, num: numVal }, creds)
         } catch {
           await githubGraphQL(
             `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
@@ -408,8 +402,7 @@ taskRoutes.patch('/:ref', async (c) => {
                 value: { text: $text }
               }) { projectV2Item { id } }
             }`,
-            { projectId, itemId: item.itemId, fieldId: matched.id, text: body.value }, creds
-          )
+            { projectId, itemId: item.itemId, fieldId: matched.id, text: body.value }, creds)
         }
       } else {
         await githubGraphQL(
@@ -419,8 +412,7 @@ taskRoutes.patch('/:ref', async (c) => {
               value: { text: $text }
             }) { projectV2Item { id } }
           }`,
-          { projectId, itemId: item.itemId, fieldId: matched.id, text: body.value }, creds
-        )
+          { projectId, itemId: item.itemId, fieldId: matched.id, text: body.value }, creds)
       }
     }
 

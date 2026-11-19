@@ -33,7 +33,8 @@ function ownerFromRepo(repo: string): string {
 
 async function getViewerNodeId(creds: Credentials): Promise<string> {
   const data = await githubGraphQL<{ viewer: { id: string } }>(
-    `query { viewer { id } }`, {}, creds
+    `query { viewer { id } }`, {},
+      creds
   )
   return data.viewer.id
 }
@@ -41,7 +42,8 @@ async function getViewerNodeId(creds: Credentials): Promise<string> {
 async function getOrgNodeId(login: string, creds: Credentials): Promise<string> {
   const data = await githubGraphQL<{ organization: { id: string } }>(
     `query($login: String!) { organization(login: $login) { id } }`,
-    { login }, creds
+    { login },
+      creds
   )
   return data.organization.id
 }
@@ -66,7 +68,8 @@ export async function getStatusField(projectId: string, creds: Credentials): Pro
         }
       }
     }`,
-    { projectId }, creds
+    { projectId },
+      creds
   )
   const field = data.node.fields.nodes.find(
     (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'Status'
@@ -96,7 +99,8 @@ async function getItemStatus(_projectId: string, itemId: string, creds: Credenti
         }
       }
     }`,
-    { itemId }, creds
+    { itemId },
+      creds
   )
   const statusField = data.node.fieldValues.nodes.find(
     (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
@@ -129,7 +133,8 @@ async function getItemIssueRef(itemId: string, creds: Credentials): Promise<{
         }
       }
     }`,
-    { itemId }, creds
+    { itemId },
+      creds
   )
   const c = data.node.content
   if (!c || c.__typename !== 'Issue' || !c.number || !c.url || !c.repository) return null
@@ -157,7 +162,8 @@ githubProjectRoutes.get('/list', async (c) => {
           }
         }
       }`,
-      { login: owner }, creds
+      { login: owner },
+        creds
     )
     nodes = data.organization.projectsV2.nodes
   } catch {
@@ -171,7 +177,8 @@ githubProjectRoutes.get('/list', async (c) => {
           }
         }
       }`,
-      { login: owner }, creds
+      { login: owner },
+        creds
     )
     nodes = data.user.projectsV2.nodes
   }
@@ -228,7 +235,8 @@ githubProjectRoutes.post('/', async (c) => {
         projectV2 { id number url }
       }
     }`,
-    { ownerId, title: body.title }, creds
+    { ownerId, title: body.title },
+      creds
   )
   const project = data.createProjectV2.projectV2
   return c.json({ id: project.id, number: project.number, url: project.url, ownerType }, 201)
@@ -264,7 +272,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
       node: { id: string; number: number; url: string; title: string }
     }>(
       `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id number url title } } }`,
-      { id: resolvedProjectId }, creds
+      { id: resolvedProjectId },
+        creds
     )
     if (!data.node?.id) return c.json({ error: `Project '${resolvedProjectId}' not found or not accessible` }, 404)
     projectId     = data.node.id
@@ -287,7 +296,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
           projectV2 { id number url }
         }
       }`,
-      { ownerId, title: body.title }, creds
+      { ownerId, title: body.title },
+        creds
     )
     projectId     = createData.createProjectV2.projectV2.id
     projectUrl    = createData.createProjectV2.projectV2.url
@@ -303,7 +313,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
         ... on ProjectV2 { fields(first: 50) { nodes { __typename ... on ProjectV2Field { name } ... on ProjectV2SingleSelectField { name } ... on ProjectV2IterationField { name } } } }
       }
     }`,
-    { id: projectId }, creds
+    { id: projectId },
+      creds
   )
   const existingNames = new Set(existingData.node.fields.nodes.map((f) => f.name))
 
@@ -322,7 +333,7 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
         }
       }`,
       { projectId, name, options: options.map((o) => ({ ...o, description: '' })) },
-      creds
+        creds
     )
     provisioned.push(data.createProjectV2Field.projectV2Field)
   }
@@ -338,7 +349,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
           projectV2Field { ... on ProjectV2Field { id name } }
         }
       }`,
-      { projectId, name, dataType }, creds
+      { projectId, name, dataType },
+        creds
     )
     provisioned.push(data.createProjectV2Field.projectV2Field)
   }
@@ -474,7 +486,8 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
           }
         }
       }`,
-      { projectId, cursor }, creds
+      { projectId, cursor },
+        creds
     )
     const page = data.node.items
     allItems.push(...page.nodes.filter((item: ProjectItem) => item.content?.__typename === 'Issue'))
@@ -547,7 +560,8 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
 
   const repo  = resolveRepo(body.repo, ws.github_repo)
   const issue = await githubGet(
-    `/repos/${repo}/issues/${body.issue_number}`, creds
+    `/repos/${repo}/issues/${body.issue_number}`,
+      creds
   ) as { node_id: string; number: number }
 
   const data = await githubGraphQL<{
@@ -558,7 +572,8 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
         item { id }
       }
     }`,
-    { projectId, contentId: issue.node_id }, creds
+    { projectId, contentId: issue.node_id },
+      creds
   )
 
   return c.json({ ok: true, item_id: data.addProjectV2ItemById.item.id, issue_number: issue.number }, 201)
@@ -607,7 +622,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
         }
       }
     }`,
-    { projectId }, creds
+    { projectId },
+      creds
   )
 
   const matchedField = fieldData.node.fields.nodes.find((f) => f.id === body.field_id)
@@ -646,7 +662,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
           projectV2Item { id }
         }
       }`,
-      { projectId, itemId, fieldId: body.field_id, optionId: option.id }, creds
+      { projectId, itemId, fieldId: body.field_id, optionId: option.id },
+        creds
     )
   } else {
     // TEXT / NUMBER / DATE fields
@@ -667,7 +684,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
               projectV2Item { id }
             }
           }`,
-          { projectId, itemId, fieldId: body.field_id, num: numVal }, creds
+          { projectId, itemId, fieldId: body.field_id, num: numVal },
+            creds
         )
       } catch {
         // Field is text type despite numeric value — fall through to text mutation
@@ -682,7 +700,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
               projectV2Item { id }
             }
           }`,
-          { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
+          { projectId, itemId, fieldId: body.field_id, text: body.value },
+            creds
         )
       }
     } else {
@@ -697,7 +716,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
             projectV2Item { id }
           }
         }`,
-        { projectId, itemId, fieldId: body.field_id, text: body.value }, creds
+        { projectId, itemId, fieldId: body.field_id, text: body.value },
+          creds
       )
     }
   }
@@ -717,7 +737,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
       await slackNotifyTaskStatus(
         issueRef.number, issueRef.title,
         oldStatus ?? '?', body.value,
-        issueRef.url, creds
+        issueRef.url,
+          creds
       )
     }
   }
@@ -743,7 +764,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
 
   // Merge new assignees with existing ones
   const issue = await githubGet(
-    `/repos/${issueRef.repo}/issues/${issueRef.number}`, creds
+    `/repos/${issueRef.repo}/issues/${issueRef.number}`,
+      creds
   ) as { assignees: Array<{ login: string }> }
 
   const existing = issue.assignees.map((a) => a.login)
@@ -760,7 +782,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
       await slackNotifyTaskAssigned(
         issueRef.number, issueRef.title,
         login, login,
-        issueRef.url, creds
+        issueRef.url,
+          creds
       )
     }
   }
@@ -830,7 +853,8 @@ githubProjectRoutes.post('/:projectId/issues/:number/comment', async (c) => {
           }
         }
       }`,
-      { projectId, cursor }, creds
+      { projectId, cursor },
+        creds
     )
     for (const n of data.node.items.nodes) {
       if (n.content?.__typename === 'Issue' && n.content.number === number) {
@@ -887,7 +911,8 @@ githubProjectRoutes.get('/:projectId/fields', async (c) => {
         }
       }
     }`,
-    { projectId }, creds
+    { projectId },
+      creds
   )
 
   return c.json({ fields: data.node.fields.nodes })

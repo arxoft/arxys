@@ -212,6 +212,7 @@ adminRoutes.patch('/workspaces/:workspace_id', async (c) => {
   const workspaceId = c.req.param('workspace_id')
   const body = await c.req.json<{
     display_name?: string
+    github_repo?: string
     notion_api_key?: string
     notion_database_id?: string
     github_project_id?: string
@@ -222,6 +223,7 @@ adminRoutes.patch('/workspaces/:workspace_id', async (c) => {
   const values: unknown[] = []
 
   if (body.display_name       !== undefined) { fields.push('display_name = ?');       values.push(body.display_name) }
+  if (body.github_repo        !== undefined) { fields.push('github_repo = ?');        values.push(body.github_repo) }
   if (body.notion_api_key     !== undefined) { fields.push('notion_api_key = ?');     values.push(body.notion_api_key || null) }
   if (body.notion_database_id !== undefined) { fields.push('notion_database_id = ?'); values.push(body.notion_database_id || null) }
   if (body.github_project_id  !== undefined) { fields.push('github_project_id = ?');  values.push(body.github_project_id || null) }
