@@ -563,18 +563,18 @@ adminRoutes.post('/ventures/:venture_id/github-org-bootstrap', async (c) => {
   if (!venture)           return c.json({ error: 'Venture not found' }, 404)
   if (!venture.github_org) return c.json({ error: 'github_org is not set on this venture' }, 400)
 
-  // Find an admin member's API key + PAT for this venture
+  // Find any member's API key + PAT for this venture
   const creds = await c.env.DB
     .prepare(`
       SELECT m.api_key, vm.github_pat
       FROM venture_members vm JOIN members m ON vm.member_id = m.id
-      WHERE vm.venture_id = ? AND vm.venture_role = 'admin' AND vm.github_pat IS NOT NULL
+      WHERE vm.venture_id = ? AND vm.github_pat IS NOT NULL AND vm.github_pat != ''
       LIMIT 1
     `)
     .bind(ventureId)
     .first<{ api_key: string; github_pat: string }>()
 
-  if (!creds) return c.json({ error: 'No admin member with a GitHub PAT found for this venture' }, 404)
+  if (!creds) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
 
   // Find a workspace for this venture to supply X-Workspace header
   const ws = await c.env.DB
@@ -613,13 +613,13 @@ adminRoutes.post('/workspaces/:workspace_id/github-project-bootstrap', async (c)
     .prepare(`
       SELECT m.api_key
       FROM venture_members vm JOIN members m ON vm.member_id = m.id
-      WHERE vm.venture_id = ? AND vm.venture_role = 'admin' AND vm.github_pat IS NOT NULL
+      WHERE vm.venture_id = ? AND vm.github_pat IS NOT NULL AND vm.github_pat != ''
       LIMIT 1
     `)
     .bind(ws.venture_id)
     .first<{ api_key: string }>()
 
-  if (!creds) return c.json({ error: 'No admin member with a GitHub PAT found for this venture' }, 404)
+  if (!creds) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
 
   const origin = new URL(c.req.url).origin
   const res = await fetch(`${origin}/v1/github/project/bootstrap`, {
