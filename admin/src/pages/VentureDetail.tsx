@@ -71,6 +71,71 @@ function SlackTestButton({ ventureId }: { ventureId: string }) {  const [state, 
 }
 
 // ---------------------------------------------------------------------------
+// Org bootstrap button
+// ---------------------------------------------------------------------------
+function OrgBootstrapButton({ ventureId }: { ventureId: string }) {
+  const [state,  setState]  = useState<'idle' | 'running' | 'ok' | 'error'>('idle')
+  const [result, setResult] = useState('')
+
+  async function run() {
+    setState('running')
+    try {
+      const res = await api.ventures.githubOrgBootstrap(ventureId)
+      const created = (res.issue_types as { created: string[] }).created
+      setResult(created.length ? `Created: ${created.join(', ')}` : 'Already up to date')
+      setState('ok')
+      setTimeout(() => setState('idle'), 5000)
+    } catch (e: unknown) {
+      setResult(e instanceof Error ? e.message : 'Error')
+      setState('error')
+      setTimeout(() => setState('idle'), 5000)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button style={{ fontSize: 12 }} disabled={state === 'running'} onClick={run}>
+        {state === 'running' ? 'Bootstrapping…' : '🏗 Org bootstrap'}
+      </button>
+      {state === 'ok'    && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--success)' }}>✓ {result}</span>}
+      {state === 'error' && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--danger)' }}>{result}</span>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Project bootstrap button
+// ---------------------------------------------------------------------------
+function ProjectBootstrapButton({ workspaceId }: { workspaceId: string }) {
+  const [state,  setState]  = useState<'idle' | 'running' | 'ok' | 'error'>('idle')
+  const [result, setResult] = useState('')
+
+  async function run() {
+    setState('running')
+    try {
+      const res = await api.workspaces.githubProjectBootstrap(workspaceId)
+      setResult(res.provisioned.length ? `Provisioned: ${res.provisioned.join(', ')}` : 'Already up to date')
+      setState('ok')
+      setTimeout(() => setState('idle'), 5000)
+    } catch (e: unknown) {
+      setResult(e instanceof Error ? e.message : 'Error')
+      setState('error')
+      setTimeout(() => setState('idle'), 5000)
+    }
+  }
+
+  return (
+    <>
+      <button style={{ fontSize: 11, marginLeft: 10 }} disabled={state === 'running'} onClick={run}>
+        {state === 'running' ? '…' : '🏗 Bootstrap'}
+      </button>
+      {state === 'ok'    && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--success)' }}>✓ {result}</span>}
+      {state === 'error' && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--danger)' }}>{result}</span>}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inline editable field
 // ---------------------------------------------------------------------------
 function Field({ label, value, onSave, type = 'text', placeholder = '' }: {
@@ -392,6 +457,9 @@ export function VentureDetail() {
         {venture.has_slack_token && venture.slack_channel_id && (
           <SlackTestButton ventureId={id!} />
         )}
+        {venture.github_org && (
+          <OrgBootstrapButton ventureId={id!} />
+        )}
       </div>
 
       {/* ── Workspaces ── */}
@@ -446,7 +514,10 @@ export function VentureDetail() {
                   : null
                 }
                 {ws.github_project_id && (
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>⚙ GitHub Project: <span className="mono">{ws.github_project_id}</span></div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                    ⚙ GitHub Project: <span className="mono">{ws.github_project_id}</span>
+                    <ProjectBootstrapButton workspaceId={ws.id} />
+                  </div>
                 )}
 
                 {/* Members */}

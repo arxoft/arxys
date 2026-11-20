@@ -54,10 +54,8 @@ fail() { echo "  ❌ $1"; echo "     → $2"; (( FAIL++ )); }
 skip() { echo "  ⏭  $1 (skipped: $2)"; (( SKIP++ )); }
 section() { echo ""; echo "── $1 ──────────────────────────────────────"; }
 
-# Run curl, return response body. Args: [curl flags...] url
 req() { curl -s "$@"; }
 
-# Check response contains expected string
 check() {
   local label="$1" resp="$2" expect="$3"
   if echo "$resp" | grep -q "$expect" 2>/dev/null; then
@@ -67,25 +65,26 @@ check() {
   fi
 }
 
-# Check response does NOT contain string (for error cases)
-check_not() {
-  local label="$1" resp="$2" noexpect="$3"
-  if echo "$resp" | grep -q "$noexpect" 2>/dev/null; then
-    fail "$label" "$resp"
-  else
-    pass "$label"
-  fi
-}
-
 # ---------------------------------------------------------------------------
-# Discover workspace state (project ID, a Notion task No., etc.)
+# Route displacement check — must pass before running any tests
 # ---------------------------------------------------------------------------
 echo "arxys API test suite"
 echo "Workspace: $WS  |  Base: $BASE"
 echo ""
+
+HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" "$BASE/")
+if [[ "$HTTP_STATUS" == "404" ]]; then
+  echo "⚠️  Route displacement detected — API Worker is not responding (HTTP 404)."
+  echo "   Run: cd api && npx wrangler deploy"
+  echo "   Then re-run this script."
+  exit 2
+fi
+
+# ---------------------------------------------------------------------------
+# Discover workspace state
+# ---------------------------------------------------------------------------
 echo "Discovering workspace state…"
 
-# Get GitHub project ID from workspace
 PROJECT_LIST=$(req "${AUTH[@]}" "$BASE/v1/github/project/list")
 PROJECT_ID=$(echo "$PROJECT_LIST" | python3 -c "
 import sys,json
@@ -94,57 +93,41 @@ projects=d.get('projects',[])
 print(projects[0]['id'] if projects else '')
 " 2>/dev/null)
 
-# Get first project item (for write tests)
 ITEM_DATA=""
 ITEM_ID=""
 ISSUE_NO=""
+FIELDS=""
+STATUS_FIELD=""
+EFFORT_FIELD=""
+ITEM_STATUS=""
+
 if [[ -n "$PROJECT_ID" ]]; then
   ITEM_DATA=$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?icebox=1")
   ITEM_ID=$(echo "$ITEM_DATA" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-issues=d.get('issues',[])
+import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
 print(issues[0]['item_id'] if issues else '')
 " 2>/dev/null)
   ISSUE_NO=$(echo "$ITEM_DATA" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-issues=d.get('issues',[])
+import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
 print(issues[0]['number'] if issues else '')
 " 2>/dev/null)
-fi
-
-# Get field IDs for Status and Effort
-STATUS_FIELD=""
-EFFORT_FIELD=""
-if [[ -n "$PROJECT_ID" ]]; then
   FIELDS=$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/fields")
   STATUS_FIELD=$(echo "$FIELDS" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
+import sys,json; d=json.load(sys.stdin)
 f=next((x for x in d.get('fields',[]) if x.get('name')=='Status'),None)
 print(f['id'] if f else '')
 " 2>/dev/null)
   EFFORT_FIELD=$(echo "$FIELDS" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
+import sys,json; d=json.load(sys.stdin)
 f=next((x for x in d.get('fields',[]) if x.get('name')=='Effort'),None)
 print(f['id'] if f else '')
 " 2>/dev/null)
-fi
-
-# Get current Status of the item (to restore later)
-ITEM_STATUS=""
-if [[ -n "$ITEM_ID" && -n "$STATUS_FIELD" ]]; then
   ITEM_STATUS=$(echo "$ITEM_DATA" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-issues=d.get('issues',[])
+import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
 print(issues[0].get('status','') if issues else '')
 " 2>/dev/null)
 fi
 
-# Get a Notion task No. for read/write tests
 NOTION_NO=""
 NOTION_RESP=$(req "${AUTH[@]}" "$BASE/v1/notion/task/list?icebox=1" 2>/dev/null)
 NOTION_NO=$(echo "$NOTION_RESP" | python3 -c "
@@ -158,37 +141,57 @@ if results:
             print(p['unique_id']['number']); break
 " 2>/dev/null)
 
+ME=$(req "${AUTH[@]}" "$BASE/v1/github/user/me" | python3 -c "
+import sys,json; print(json.load(sys.stdin).get('login',''))" 2>/dev/null)
+
 echo "  GitHub Project : ${PROJECT_ID:-none}"
 echo "  Test item      : ${ITEM_ID:-none} (issue #${ISSUE_NO:-?}, status: ${ITEM_STATUS:-?})"
 echo "  Notion task    : #${NOTION_NO:-none}"
+echo "  GitHub user    : ${ME:-unknown}"
+
+# ---------------------------------------------------------------------------
+# HEALTH
+# ---------------------------------------------------------------------------
+section "HEALTH"
+
+R=$(req "$BASE/")
+check "API root reachable" "$R" '"service":"arxys-api"'
+
+R=$(req -X POST -H "Content-Type: application/json" "$BASE/auth/otp/request" \
+  -d '{"email":"test-healthcheck@arxys-noreply.com"}')
+if echo "$R" | grep -qi 'not configured'; then
+  fail "email service configured (RESEND secrets)" "$R"
+else
+  pass "email service configured (RESEND secrets)"
+fi
 
 # ---------------------------------------------------------------------------
 # PUBLIC — no auth
 # ---------------------------------------------------------------------------
 section "PUBLIC (no auth)"
 
-check "rules"              "$(req "$BASE/v1/rules")"                       "arxys Task Rules"
-check "workflow/list"      "$(req "$BASE/v1/workflow/list")"               '"development"'
-check "workflow/development" "$(req "$BASE/v1/workflow/development")"      "Development Workflow"
-check "workflow/review"    "$(req "$BASE/v1/workflow/review")"             "Review Workflow"
-check "workflow/hotfix"    "$(req "$BASE/v1/workflow/hotfix")"             "Hotfix Workflow"
-check "workflow/deployment" "$(req "$BASE/v1/workflow/deployment")"        "Deployment Workflow"
-check "workflow/testing"   "$(req "$BASE/v1/workflow/testing")"            "Testing Workflow"
-check "workflow/planning"  "$(req "$BASE/v1/workflow/planning")"           "Planning Workflow"
-check "workflow/task-creation" "$(req "$BASE/v1/workflow/task-creation")"  "Task Creation"
-check "workflow/bug-reporting" "$(req "$BASE/v1/workflow/bug-reporting")"  "Bug Reporting"
-check "workflow/release"   "$(req "$BASE/v1/workflow/release")"            "Release Workflow"
-check "workflow/onboarding" "$(req "$BASE/v1/workflow/onboarding")"        "Onboarding"
-check "workflow/404"       "$(req "$BASE/v1/workflow/nonexistent")"        '"error"'
-check "steering"           "$(req "$BASE/v1/steering")"                    "arxys — Agent Instructions"
+check "rules"                  "$(req "$BASE/v1/rules")"                          "arxys Task Rules"
+check "workflow/list"          "$(req "$BASE/v1/workflow/list")"                  '"development"'
+check "workflow/development"   "$(req "$BASE/v1/workflow/development")"           "Development Workflow"
+check "workflow/review"        "$(req "$BASE/v1/workflow/review")"                "Review Workflow"
+check "workflow/hotfix"        "$(req "$BASE/v1/workflow/hotfix")"                "Hotfix Workflow"
+check "workflow/deployment"    "$(req "$BASE/v1/workflow/deployment")"            "Deployment Workflow"
+check "workflow/testing"       "$(req "$BASE/v1/workflow/testing")"               "Testing Workflow"
+check "workflow/planning"      "$(req "$BASE/v1/workflow/planning")"              "Planning Workflow"
+check "workflow/task-creation" "$(req "$BASE/v1/workflow/task-creation")"         "Task Creation"
+check "workflow/bug-reporting" "$(req "$BASE/v1/workflow/bug-reporting")"         "Bug Reporting"
+check "workflow/release"       "$(req "$BASE/v1/workflow/release")"               "Release Workflow"
+check "workflow/onboarding"    "$(req "$BASE/v1/workflow/onboarding")"            "Onboarding"
+check "workflow/404"           "$(req "$BASE/v1/workflow/nonexistent")"           '"error"'
+check "steering"               "$(req "$BASE/v1/steering")"                       "arxys — Agent Instructions"
 
 # ---------------------------------------------------------------------------
 # AUTH
 # ---------------------------------------------------------------------------
 section "AUTH"
 
-check "bad api key → 401"  "$(req -H 'X-Api-Key: bad' -H "X-Workspace: $WS" "$BASE/v1/task/list")" '"error"'
-check "missing workspace → 400" "$(req -H "X-Api-Key: $KEY" "$BASE/v1/task/list")" '"error"'
+check "bad api key → 401"       "$(req -H 'X-Api-Key: bad' -H "X-Workspace: $WS" "$BASE/v1/task/list")" '"error"'
+check "missing workspace → 400" "$(req -H "X-Api-Key: $KEY" "$BASE/v1/task/list")"                       '"error"'
 
 # ---------------------------------------------------------------------------
 # GITHUB PROJECT — read
@@ -198,13 +201,13 @@ section "GITHUB PROJECT — read"
 if [[ -z "$PROJECT_ID" ]]; then
   skip "all project tests" "no GitHub project configured on this workspace"
 else
-  check "project/list"           "$(req "${AUTH[@]}" "$BASE/v1/github/project/list")"                               '"id"'
-  check "project/members"        "$(req "${AUTH[@]}" "$BASE/v1/github/project/members")"                             '"login"'
-  check "project/fields"         "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/fields")"                  '"Status"'
-  check "project/issues"         "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues")"                  '"issues"'
-  check "project/issues?icebox"  "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?icebox=1")"         '"issues"'
-  check "project/issues?mine"    "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?mine=1")"           '"issues"'
-  check "project/issues?status"  "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?status=Backlog")"  '"issues"'
+  check "project/list"          "$(req "${AUTH[@]}" "$BASE/v1/github/project/list")"                              '"id"'
+  check "project/members"       "$(req "${AUTH[@]}" "$BASE/v1/github/project/members")"                           '"login"'
+  check "project/fields"        "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/fields")"                '"Status"'
+  check "project/issues"        "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues")"                '"issues"'
+  check "project/issues?icebox" "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?icebox=1")"       '"issues"'
+  check "project/issues?mine"   "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?mine=1")"         '"issues"'
+  check "project/issues?status" "$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?status=Backlog")" '"issues"'
 fi
 
 # ---------------------------------------------------------------------------
@@ -215,30 +218,26 @@ section "GITHUB PROJECT — write"
 if [[ -z "$ITEM_ID" || -z "$STATUS_FIELD" ]]; then
   skip "all project write tests" "no project item available"
 else
-  # PATCH Effort (number field)
+  PRIORITY_FIELD=$(echo "$FIELDS" | python3 -c "
+import sys,json; d=json.load(sys.stdin)
+f=next((x for x in d.get('fields',[]) if x.get('name')=='Priority'),None)
+print(f['id'] if f else '')
+" 2>/dev/null)
+
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
     -d "{\"field_id\":\"$EFFORT_FIELD\",\"value\":\"5\"}")
   check "PATCH Effort = 5 (number)" "$R" '"ok":true'
 
-  # PATCH Priority (single-select)
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
-    -d "{\"field_id\":\"$(echo "$FIELDS" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-f=next((x for x in d.get('fields',[]) if x.get('name')=='Priority'),None)
-print(f['id'] if f else '')
-")\",\"value\":\"Medium\"}")
+    -d "{\"field_id\":\"$PRIORITY_FIELD\",\"value\":\"Medium\"}")
   check "PATCH Priority = Medium (select)" "$R" '"ok":true'
 
-  # PATCH Status → same value (audit comment fires but no board noise)
   if [[ -n "$ITEM_STATUS" ]]; then
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
       -d "{\"field_id\":\"$STATUS_FIELD\",\"value\":\"$ITEM_STATUS\"}")
     check "PATCH Status → same value (no noise)" "$R" '"ok":true'
   fi
 
-  # Assign then unassign (net-zero)
-  ME=$(req "${AUTH[@]}" "$BASE/v1/github/user/me" | python3 -c "import sys,json; print(json.load(sys.stdin).get('login',''))" 2>/dev/null)
   if [[ -n "$ME" ]]; then
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID/assign" \
       -d "{\"assignees\":[\"$ME\"]}")
@@ -248,7 +247,7 @@ print(f['id'] if f else '')
       -d "{\"assignees\":[\"$ME\"]}")
     check "unassign (restore)" "$R" '"ok":true'
 
-    # Re-assign to restore original state if was already assigned
+    # Restore
     req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID/assign" \
       -d "{\"assignees\":[\"$ME\"]}" > /dev/null 2>&1
   else
@@ -261,12 +260,12 @@ fi
 # ---------------------------------------------------------------------------
 section "UNIFIED /v1/task"
 
-check "task/list"       "$(req "${AUTH[@]}" "$BASE/v1/task/list")"       '"tasks"'
-check "task/list?mine"  "$(req "${AUTH[@]}" "$BASE/v1/task/list?mine=1")"  '"tasks"'
+check "task/list"        "$(req "${AUTH[@]}" "$BASE/v1/task/list")"          '"tasks"'
+check "task/list?mine"   "$(req "${AUTH[@]}" "$BASE/v1/task/list?mine=1")"   '"tasks"'
 check "task/list?icebox" "$(req "${AUTH[@]}" "$BASE/v1/task/list?icebox=1")" '"tasks"'
 
 if [[ -n "$ISSUE_NO" ]]; then
-  check "task/:ref GET"  "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")"  '"backend"'
+  check "task/:ref GET" "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")" '"backend"'
 
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
     -d '{"field":"Effort","value":"5"}')
@@ -294,27 +293,15 @@ fi
 # ---------------------------------------------------------------------------
 section "NOTION — read"
 
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/task/list")
-check "notion/task/list"               "$R" '"results"'
-
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/task/list?icebox=1")
-check "notion/task/list?icebox=1"      "$R" '"results"'
-
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/task/list?mine=1")
-check "notion/task/list?mine=1"        "$R" '"results"\|mine requires email'
-
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/user/list")
-check "notion/user/list"               "$R" '"members"'
-
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/db/list")
-check "notion/db/list"                 "$R" '"boards"'
-
-R=$(req "${AUTH[@]}" "$BASE/v1/notion/db/info")
-check "notion/db/info"                 "$R" '"object"\|"error"'
+check "notion/task/list"         "$(req "${AUTH[@]}" "$BASE/v1/notion/task/list")"          '"results"'
+check "notion/task/list?icebox"  "$(req "${AUTH[@]}" "$BASE/v1/notion/task/list?icebox=1")" '"results"'
+check "notion/task/list?mine"    "$(req "${AUTH[@]}" "$BASE/v1/notion/task/list?mine=1")"   '"results"\|mine requires email'
+check "notion/user/list"         "$(req "${AUTH[@]}" "$BASE/v1/notion/user/list")"          '"members"'
+check "notion/db/list"           "$(req "${AUTH[@]}" "$BASE/v1/notion/db/list")"            '"boards"'
+check "notion/db/info"           "$(req "${AUTH[@]}" "$BASE/v1/notion/db/info")"            '"object"\|"error"'
 
 if [[ -n "$NOTION_NO" ]]; then
-  R=$(req "${AUTH[@]}" "$BASE/v1/notion/task/$NOTION_NO")
-  check "notion/task/:no"              "$R" '"page"'
+  check "notion/task/:no" "$(req "${AUTH[@]}" "$BASE/v1/notion/task/$NOTION_NO")" '"page"'
 else
   skip "notion/task/:no" "no Notion tasks found"
 fi
@@ -327,21 +314,19 @@ section "NOTION — write"
 if [[ -z "$NOTION_NO" ]]; then
   skip "all Notion write tests" "no Notion tasks found"
 else
-  # Update a property and restore it
   NOTION_PAGE=$(req "${AUTH[@]}" "$BASE/v1/notion/task/$NOTION_NO")
 
-  # Find the first writable number property to use for the write test
   NOTION_NUM_PROP=$(echo "$NOTION_PAGE" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 props=d.get('page',{}).get('properties',{})
-skip={'ID','Created on','Last Update'}  # read-only
+skip={'ID','Created on','Last Update'}
 for name,p in props.items():
     if p.get('type')=='number' and name not in skip:
         print(name); break
 " 2>/dev/null)
 
-  CURRENT_EFFORT=$(echo "$NOTION_PAGE" | python3 -c "
+  CURRENT_NUM=$(echo "$NOTION_PAGE" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 props=d.get('page',{}).get('properties',{})
@@ -352,23 +337,22 @@ for name,p in props.items():
 " 2>/dev/null)
 
   if [[ -z "$NOTION_NUM_PROP" ]]; then
-    skip "notion/task PATCH number field" "no writable number property found on this DB"
+    skip "notion/task PATCH number field" "no writable number property on this DB"
   else
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/notion/task/$NOTION_NO" \
       -d "{\"property\":\"$NOTION_NUM_PROP\",\"value\":\"5\"}")
     check "notion/task PATCH $NOTION_NUM_PROP = 5" "$R" '"ok":true'
 
-    # Restore original value
-    if [[ -n "$CURRENT_EFFORT" ]]; then
+    # Restore
+    if [[ -n "$CURRENT_NUM" ]]; then
       req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/notion/task/$NOTION_NO" \
-        -d "{\"property\":\"$NOTION_NUM_PROP\",\"value\":\"$CURRENT_EFFORT\"}" > /dev/null 2>&1
+        -d "{\"property\":\"$NOTION_NUM_PROP\",\"value\":\"$CURRENT_NUM\"}" > /dev/null 2>&1
     fi
   fi
 
-  # Add a comment (non-status, so no Slack noise)
   R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/notion/comment/$NOTION_NO" \
     -d '{"text":"[arxys test suite — automated check]"}')
-  check "notion/comment POST"          "$R" '"ok":true'
+  check "notion/comment POST" "$R" '"ok":true'
 fi
 
 # ---------------------------------------------------------------------------
@@ -376,24 +360,22 @@ fi
 # ---------------------------------------------------------------------------
 section "GITHUB REPO / USER / PR"
 
-check "repo/info"      "$(req "${AUTH[@]}" "$BASE/v1/github/repo/info")"                      '"full_name"'
-check "repo/commits"   "$(req "${AUTH[@]}" "$BASE/v1/github/repo/commits")"                   '"sha"\|\[\]'
-check "repo/search"    "$(req "${AUTH[@]}" "$BASE/v1/github/repo/search?q=github")"           '"total_count"'
-check "repo/list"      "$(req "${AUTH[@]}" "$BASE/v1/github/repo/list?org=$(req "${AUTH[@]}" "$BASE/v1/github/user/me" | python3 -c "import sys,json; print(json.load(sys.stdin).get('login','github'))" 2>/dev/null)")" '"full_name"\|\[\]'
-check "user/me"        "$(req "${AUTH[@]}" "$BASE/v1/github/user/me")"                        '"login"'
-check "user/search"    "$(req "${AUTH[@]}" "$BASE/v1/github/user/search?q=github")"           '"items"'
-check "pr/list"        "$(req "${AUTH[@]}" "$BASE/v1/github/pr/list")"                        '"number"\|\[\]'
-check "issue/list"     "$(req "${AUTH[@]}" "$BASE/v1/github/issue/list")"                     '"number"\|\[\]'
+check "repo/info"    "$(req "${AUTH[@]}" "$BASE/v1/github/repo/info")"                    '"full_name"'
+check "repo/commits" "$(req "${AUTH[@]}" "$BASE/v1/github/repo/commits")"                 '"sha"\|\[\]'
+check "repo/search"  "$(req "${AUTH[@]}" "$BASE/v1/github/repo/search?q=github")"         '"total_count"'
+check "repo/list"    "$(req "${AUTH[@]}" "$BASE/v1/github/repo/list?org=${ME:-github}")"  '"full_name"\|\[\]'
+check "user/me"      "$(req "${AUTH[@]}" "$BASE/v1/github/user/me")"                      '"login"'
+check "user/search"  "$(req "${AUTH[@]}" "$BASE/v1/github/user/search?q=github")"         '"items"'
+check "pr/list"      "$(req "${AUTH[@]}" "$BASE/v1/github/pr/list")"                      '"number"\|\[\]'
+check "issue/list"   "$(req "${AUTH[@]}" "$BASE/v1/github/issue/list")"                   '"number"\|\[\]'
 
-# Cross-repo access — pass a non-primary repo, confirm no 403
+# Cross-repo — confirm no 403 (PAT is the only gate)
 CROSS_REPO="asif-maktg/alqada-claims-backend-php-mysql"
 R=$(req "${AUTH[@]}" "$BASE/v1/github/repo/info?repo=$CROSS_REPO")
-if echo "$R" | grep -q '"full_name"'; then
-  pass "cross-repo access (?repo= override)"
-elif echo "$R" | grep -q 'not associated\|403'; then
+if echo "$R" | grep -q 'not associated\|403'; then
   fail "cross-repo access (?repo= override)" "$R"
 else
-  pass "cross-repo access (?repo= override — PAT may not have access, that's expected)"
+  pass "cross-repo access (?repo= override)"
 fi
 
 # ---------------------------------------------------------------------------

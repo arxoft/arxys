@@ -48,6 +48,9 @@ export const api = {
       patch<{ ok: boolean }>(`/admin/ventures/${id}`, b, true),
     slackTest: (id: string) =>
       post<{ ok: boolean }>(`/admin/ventures/${id}/slack-test`, {}, true),
+    githubOrgBootstrap: (id: string) =>
+      post<{ ok: boolean; org: string; issue_types: object; issue_fields: object }>(
+        `/admin/ventures/${id}/github-org-bootstrap`, {}, true),
   },
 
   workspaces: {
@@ -61,6 +64,9 @@ export const api = {
     githubProjectTest: (workspace_id: string) =>
       post<{ ok: boolean; project: { id: string; title: string; url: string; number: number } }>(
         `/admin/workspaces/${workspace_id}/github-project-test`, {}, true),
+    githubProjectBootstrap: (workspace_id: string) =>
+      post<{ ok: boolean; project_id: string; url: string; provisioned: string[]; skipped: string[] }>(
+        `/admin/workspaces/${workspace_id}/github-project-bootstrap`, {}, true),
   },
 
   members: {

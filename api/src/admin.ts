@@ -548,7 +548,94 @@ adminRoutes.delete('/workspaces/:workspace_id/members/:member_id', async (c) => 
   return c.json({ ok: true })
 })
 
-// ── Workspace repos ───────────────────────────────────────────────────────────
+// ── GitHub bootstrap (admin-proxied) ─────────────────────────────────────────
+
+// POST /admin/ventures/:venture_id/github-org-bootstrap
+// Calls POST /v1/github/org/bootstrap using the venture admin's PAT.
+adminRoutes.post('/ventures/:venture_id/github-org-bootstrap', async (c) => {
+  const ventureId = c.req.param('venture_id')
+
+  const venture = await c.env.DB
+    .prepare('SELECT github_org FROM ventures WHERE id = ?')
+    .bind(ventureId)
+    .first<{ github_org: string | null }>()
+
+  if (!venture)           return c.json({ error: 'Venture not found' }, 404)
+  if (!venture.github_org) return c.json({ error: 'github_org is not set on this venture' }, 400)
+
+  // Find an admin member's API key + PAT for this venture
+  const creds = await c.env.DB
+    .prepare(`
+      SELECT m.api_key, vm.github_pat
+      FROM venture_members vm JOIN members m ON vm.member_id = m.id
+      WHERE vm.venture_id = ? AND vm.venture_role = 'admin' AND vm.github_pat IS NOT NULL
+      LIMIT 1
+    `)
+    .bind(ventureId)
+    .first<{ api_key: string; github_pat: string }>()
+
+  if (!creds) return c.json({ error: 'No admin member with a GitHub PAT found for this venture' }, 404)
+
+  // Find a workspace for this venture to supply X-Workspace header
+  const ws = await c.env.DB
+    .prepare('SELECT id FROM workspaces WHERE venture_id = ? LIMIT 1')
+    .bind(ventureId)
+    .first<{ id: string }>()
+
+  if (!ws) return c.json({ error: 'No workspace found for this venture' }, 404)
+
+  const origin = new URL(c.req.url).origin
+  const res = await fetch(`${origin}/v1/github/org/bootstrap`, {
+    method: 'POST',
+    headers: {
+      'X-Api-Key':   creds.api_key,
+      'X-Workspace': ws.id,
+    },
+  })
+  const data = await res.json()
+  return c.json(data, res.status as 200)
+})
+
+// POST /admin/workspaces/:workspace_id/github-project-bootstrap
+// Calls POST /v1/github/project/bootstrap using the workspace's configured project ID.
+adminRoutes.post('/workspaces/:workspace_id/github-project-bootstrap', async (c) => {
+  const workspaceId = c.req.param('workspace_id')
+
+  const ws = await c.env.DB
+    .prepare('SELECT venture_id, github_project_id FROM workspaces WHERE id = ?')
+    .bind(workspaceId)
+    .first<{ venture_id: string; github_project_id: string | null }>()
+
+  if (!ws) return c.json({ error: 'Workspace not found' }, 404)
+  if (!ws.github_project_id) return c.json({ error: 'No github_project_id set on this workspace' }, 400)
+
+  const creds = await c.env.DB
+    .prepare(`
+      SELECT m.api_key
+      FROM venture_members vm JOIN members m ON vm.member_id = m.id
+      WHERE vm.venture_id = ? AND vm.venture_role = 'admin' AND vm.github_pat IS NOT NULL
+      LIMIT 1
+    `)
+    .bind(ws.venture_id)
+    .first<{ api_key: string }>()
+
+  if (!creds) return c.json({ error: 'No admin member with a GitHub PAT found for this venture' }, 404)
+
+  const origin = new URL(c.req.url).origin
+  const res = await fetch(`${origin}/v1/github/project/bootstrap`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Api-Key':    creds.api_key,
+      'X-Workspace':  workspaceId,
+    },
+    body: JSON.stringify({ project_id: ws.github_project_id }),
+  })
+  const data = await res.json()
+  return c.json(data, res.status as 200)
+})
+
+
 
 adminRoutes.post('/workspaces/:workspace_id/repos', async (c) => {
   const workspaceId = c.req.param('workspace_id')
