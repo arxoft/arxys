@@ -22,30 +22,53 @@ export const ARXYS_STATUSES = [
   'Icebox',
 ]
 
+// ---------------------------------------------------------------------------
+// Standard arxys issue types (org-level)
+// ---------------------------------------------------------------------------
+const ARXYS_ISSUE_TYPES = [
+  { name: 'Task',    color: 'gray',   description: 'A specific piece of work' },
+  { name: 'Bug',     color: 'red',    description: 'An unexpected problem or behavior' },
+  { name: 'Feature', color: 'blue',   description: 'A new capability or enhancement' },
+  { name: 'Hotfix',  color: 'orange', description: 'Fast-track critical production fix' },
+  { name: 'Epic',    color: 'purple', description: 'A multi-week body of work spanning multiple tasks' },
+]
+
+// ---------------------------------------------------------------------------
+// Standard arxys org-level issue fields
+// Priority and Effort are already created by GitHub as org defaults —
+// listed here for idempotent validation, not re-creation.
+// ---------------------------------------------------------------------------
+const ARXYS_ISSUE_FIELDS = [
+  {
+    name:        'Deploy Flags',
+    data_type:   'single_select' as const,
+    description: 'Deployment notes attached to this issue',
+    options: [
+      { value: 'has-migration',  color: 'RED',    description: 'Ships a DB schema change — run migration before/after deploy' },
+      { value: 'has-env-change', color: 'YELLOW', description: 'Requires .env updates on the server before deploying' },
+    ],
+  },
+]
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function ownerFromRepo(repo: string): string {
-  return repo.split('/')[0]
+async function getOrgNodeId(login: string, creds: Credentials): Promise<string> {
+  const data = await githubGraphQL<{ organization: { id: string } }>(
+    `query($login: String!) { organization(login: $login) { id } }`,
+    { login },
+    creds
+  )
+  return data.organization.id
 }
 
 async function getViewerNodeId(creds: Credentials): Promise<string> {
   const data = await githubGraphQL<{ viewer: { id: string } }>(
     `query { viewer { id } }`, {},
-      creds
+    creds
   )
   return data.viewer.id
-}
-
-async function getOrgNodeId(login: string, creds: Credentials): Promise<string> {
-  const data = await githubGraphQL<{ organization: { id: string } }>(
-    `query($login: String!) { organization(login: $login) { id } }`,
-    { login },
-      creds
-  )
-  return data.organization.id
 }
 
 // Fetch the Status field ID and its options from a project — used by bootstrap validation
@@ -69,7 +92,7 @@ export async function getStatusField(projectId: string, creds: Credentials): Pro
       }
     }`,
     { projectId },
-      creds
+    creds
   )
   const field = data.node.fields.nodes.find(
     (f) => f.__typename === 'ProjectV2SingleSelectField' && f.name === 'Status'
@@ -100,7 +123,7 @@ async function getItemStatus(_projectId: string, itemId: string, creds: Credenti
       }
     }`,
     { itemId },
-      creds
+    creds
   )
   const statusField = data.node.fieldValues.nodes.find(
     (fv) => fv.__typename === 'ProjectV2ItemFieldSingleSelectValue' && fv.field?.name === 'Status'
@@ -134,20 +157,130 @@ async function getItemIssueRef(itemId: string, creds: Credentials): Promise<{
       }
     }`,
     { itemId },
-      creds
+    creds
   )
   const c = data.node.content
   if (!c || c.__typename !== 'Issue' || !c.number || !c.url || !c.repository) return null
   return { repo: c.repository.nameWithOwner, number: c.number, url: c.url, title: c.title ?? '' }
 }
 
+// Resolve the GitHub org for a route — requires venture.github_org to be set
+function requireOrg(org: string | null, routeName: string): string {
+  if (!org) throw Object.assign(
+    new Error(`github_org is not set on this venture. Set it via PATCH /admin/ventures/:id before using ${routeName}.`),
+    { status: 400 }
+  )
+  return org
+}
+
+// ---------------------------------------------------------------------------
+// POST /github/org/bootstrap
+// Provisions org-level issue types and issue fields.
+// Run once per org. Safe to re-run (idempotent).
+// Requires venture.github_org to be set.
+// ---------------------------------------------------------------------------
+githubProjectRoutes.post('/org/bootstrap', async (c) => {
+  const creds   = c.get('credentials')
+  const venture = c.get('venture')
+  const org     = requireOrg(venture.github_org, 'POST /github/org/bootstrap')
+
+  // ── Issue types ────────────────────────────────────────────────────────────
+  const existingTypes = await githubGet(`/orgs/${org}/issue-types`, creds) as Array<{
+    id: number; name: string; is_enabled: boolean
+  }>
+
+  const typesCreated: string[] = []
+  const typesSkipped: string[] = []
+
+  for (const t of ARXYS_ISSUE_TYPES) {
+    const existing = existingTypes.find((e) => e.name.toLowerCase() === t.name.toLowerCase())
+    if (existing) {
+      typesSkipped.push(t.name)
+      continue
+    }
+    await githubPost(`/orgs/${org}/issue-types`, creds, {
+      name:        t.name,
+      is_enabled:  true,
+      color:       t.color,
+      description: t.description,
+    })
+    typesCreated.push(t.name)
+  }
+
+  // ── Org-level issue fields ─────────────────────────────────────────────────
+  // The Issue Fields API uses a different base path under orgs planning settings.
+  // Endpoint: /orgs/{org}/properties/schema  (org custom properties — issue fields
+  // are part of the same surface for free-form; structured single-select issue
+  // fields use /orgs/{org}/issue-fields when that endpoint is GA, otherwise
+  // we use /orgs/{org}/properties/schema for custom properties).
+  //
+  // As of 2026, the dedicated issue fields endpoint is:
+  //   POST /orgs/{org}/issue-fields
+  // We attempt that and fall back gracefully with a manual_steps note if it
+  // returns 404 (org doesn't have the feature yet).
+  const fieldsCreated: string[] = []
+  const fieldsSkipped: string[] = []
+  const fieldsManual:  string[] = []
+
+  let existingFields: Array<{ name: string }> = []
+  try {
+    existingFields = await githubGet(`/orgs/${org}/issue-fields`, creds) as Array<{ name: string }>
+  } catch {
+    // Feature not available — will note in manual_steps
+  }
+
+  for (const field of ARXYS_ISSUE_FIELDS) {
+    const alreadyExists = existingFields.some(
+      (e) => e.name.toLowerCase() === field.name.toLowerCase()
+    )
+    if (alreadyExists) {
+      fieldsSkipped.push(field.name)
+      continue
+    }
+
+    if (existingFields.length === 0 && fieldsManual.length === 0) {
+      // API not available — record for manual_steps
+      fieldsManual.push(field.name)
+      continue
+    }
+
+    try {
+      await githubPost(`/orgs/${org}/issue-fields`, creds, {
+        name:        field.name,
+        data_type:   field.data_type,
+        description: field.description,
+        options:     field.options,
+      })
+      fieldsCreated.push(field.name)
+    } catch {
+      fieldsManual.push(field.name)
+    }
+  }
+
+  return c.json({
+    ok:              true,
+    org,
+    issue_types: {
+      created: typesCreated,
+      skipped: typesSkipped,
+    },
+    issue_fields: {
+      created: fieldsCreated,
+      skipped: fieldsSkipped,
+      manual_steps: fieldsManual.length
+        ? `Create these issue fields manually in org Settings → Planning → Issue fields: ${fieldsManual.join(', ')}`
+        : null,
+    },
+  })
+})
+
 // ---------------------------------------------------------------------------
 // GET /github/project/list
 // ---------------------------------------------------------------------------
 githubProjectRoutes.get('/list', async (c) => {
-  const creds = c.get('credentials')
-  const ws    = c.get('workspace')
-  const owner = ownerFromRepo(ws.github_repo)
+  const creds   = c.get('credentials')
+  const venture = c.get('venture')
+  const org     = requireOrg(venture.github_org, 'GET /github/project/list')
 
   let nodes: Array<{ id: string; number: number; title: string; url: string; closed: boolean }>
 
@@ -162,11 +295,12 @@ githubProjectRoutes.get('/list', async (c) => {
           }
         }
       }`,
-      { login: owner },
-        creds
+      { login: org },
+      creds
     )
     nodes = data.organization.projectsV2.nodes
   } catch {
+    // Fall back to viewer's personal projects (personal account org)
     const data = await githubGraphQL<{
       user: { projectsV2: { nodes: typeof nodes } }
     }>(
@@ -177,8 +311,8 @@ githubProjectRoutes.get('/list', async (c) => {
           }
         }
       }`,
-      { login: owner },
-        creds
+      { login: org },
+      creds
     )
     nodes = data.user.projectsV2.nodes
   }
@@ -188,21 +322,20 @@ githubProjectRoutes.get('/list', async (c) => {
 
 // ---------------------------------------------------------------------------
 // GET /github/project/members
-// Lists org members with their GitHub login and email (if visible).
-// Equivalent to GET /notion/user/list for GitHub workspaces.
+// Lists org members with their GitHub login.
 // ---------------------------------------------------------------------------
 githubProjectRoutes.get('/members', async (c) => {
-  const creds = c.get('credentials')
-  const ws    = c.get('workspace')
-  const owner = ownerFromRepo(ws.github_repo)
+  const creds   = c.get('credentials')
+  const venture = c.get('venture')
+  const org     = requireOrg(venture.github_org, 'GET /github/project/members')
 
   try {
-    const members = await githubGet(`/orgs/${owner}/members?per_page=100`, creds) as Array<{
+    const members = await githubGet(`/orgs/${org}/members?per_page=100`, creds) as Array<{
       login: string; id: number; avatar_url: string; html_url: string
     }>
     return c.json({ members: members.map((m) => ({ login: m.login, url: m.html_url })) })
   } catch {
-    // Fall back to viewer only (personal account / no org access)
+    // Personal account — fall back to viewer only
     const me = await githubGet('/user', creds) as { login: string; html_url: string }
     return c.json({ members: [{ login: me.login, url: me.html_url }] })
   }
@@ -210,21 +343,23 @@ githubProjectRoutes.get('/members', async (c) => {
 
 // ---------------------------------------------------------------------------
 // POST /github/project
+// Creates a new project under the venture org.
 // Body: { title: string }
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/', async (c) => {
-  const creds = c.get('credentials')
-  const ws    = c.get('workspace')
-  const body  = await c.req.json<{ title: string }>()
+  const creds   = c.get('credentials')
+  const venture = c.get('venture')
+  const body    = await c.req.json<{ title: string }>()
   if (!body.title) return c.json({ error: 'title is required' }, 400)
 
-  const owner = ownerFromRepo(ws.github_repo)
+  const org = requireOrg(venture.github_org, 'POST /github/project')
+
   let ownerId: string
   let ownerType: 'org' | 'user'
   try {
-    ownerId   = await getOrgNodeId(owner, creds); ownerType = 'org'
+    ownerId   = await getOrgNodeId(org, creds); ownerType = 'org'
   } catch {
-    ownerId   = await getViewerNodeId(creds);     ownerType = 'user'
+    ownerId   = await getViewerNodeId(creds);   ownerType = 'user'
   }
 
   const data = await githubGraphQL<{
@@ -236,7 +371,7 @@ githubProjectRoutes.post('/', async (c) => {
       }
     }`,
     { ownerId, title: body.title },
-      creds
+    creds
   )
   const project = data.createProjectV2.projectV2
   return c.json({ id: project.id, number: project.number, url: project.url, ownerType }, 201)
@@ -244,16 +379,21 @@ githubProjectRoutes.post('/', async (c) => {
 
 // ---------------------------------------------------------------------------
 // POST /github/project/bootstrap
-// Provisions the standard arxys field schema on a project.
+// Provisions the standard arxys project field schema on a project.
 // If project_id is provided → provisions fields on that existing project.
 // If only title is provided → creates a new project first, then provisions.
-// Mirrors Notion's db bootstrap: additive, safe to re-run.
+// Safe to re-run (additive only).
 // Body: { project_id?: string, title?: string }
+//
+// Note: Priority and Effort are now org-level issue fields (set via
+// POST /github/org/bootstrap). This route handles project-specific fields only:
+// Status, Git Branch, Pull Request, Review round, Description, Due Date.
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/bootstrap', async (c) => {
-  const creds = c.get('credentials')
-  const ws    = c.get('workspace')
-  const body  = await c.req.json<{ project_id?: string; title?: string }>().catch(() => ({} as { project_id?: string; title?: string }))
+  const creds   = c.get('credentials')
+  const ws      = c.get('workspace')
+  const venture = c.get('venture')
+  const body    = await c.req.json<{ project_id?: string; title?: string }>().catch(() => ({} as { project_id?: string; title?: string }))
 
   // project_id priority: body → workspace credential → error
   const resolvedProjectId = body.project_id ?? creds.githubProjectId ?? null
@@ -261,6 +401,8 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   if (!resolvedProjectId && !body.title) {
     return c.json({ error: 'Provide project_id, or set github_project_id on the workspace, or provide title to create a new project' }, 400)
   }
+
+  const org = requireOrg(venture.github_org, 'POST /github/project/bootstrap')
 
   let projectId: string
   let projectUrl: string
@@ -273,18 +415,17 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
     }>(
       `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id number url title } } }`,
       { id: resolvedProjectId },
-        creds
+      creds
     )
     if (!data.node?.id) return c.json({ error: `Project '${resolvedProjectId}' not found or not accessible` }, 404)
     projectId     = data.node.id
     projectUrl    = data.node.url
     projectNumber = data.node.number
   } else {
-    // Create a new project
-    const owner = ownerFromRepo(ws.github_repo)
+    // Create a new project under the venture org
     let ownerId: string
     try {
-      ownerId = await getOrgNodeId(owner, creds)
+      ownerId = await getOrgNodeId(org, creds)
     } catch {
       ownerId = await getViewerNodeId(creds)
     }
@@ -297,7 +438,7 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
         }
       }`,
       { ownerId, title: body.title },
-        creds
+      creds
     )
     projectId     = createData.createProjectV2.projectV2.id
     projectUrl    = createData.createProjectV2.projectV2.url
@@ -314,29 +455,12 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
       }
     }`,
     { id: projectId },
-      creds
+    creds
   )
   const existingNames = new Set(existingData.node.fields.nodes.map((f) => f.name))
 
   type FieldResult = { name: string; id: string }
   const provisioned: FieldResult[] = []
-
-  // Helper to create a single-select field
-  async function addSingleSelect(name: string, options: Array<{ name: string; color: string }>) {
-    if (existingNames.has(name)) return
-    const data = await githubGraphQL<{
-      createProjectV2Field: { projectV2Field: { id: string; name: string } }
-    }>(
-      `mutation($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
-        createProjectV2Field(input: { projectId: $projectId, dataType: SINGLE_SELECT, name: $name, singleSelectOptions: $options }) {
-          projectV2Field { ... on ProjectV2SingleSelectField { id name } }
-        }
-      }`,
-      { projectId, name, options: options.map((o) => ({ ...o, description: '' })) },
-        creds
-    )
-    provisioned.push(data.createProjectV2Field.projectV2Field)
-  }
 
   // Helper to create a text/number/date field
   async function addField(name: string, dataType: 'TEXT' | 'NUMBER' | 'DATE') {
@@ -350,50 +474,18 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
         }
       }`,
       { projectId, name, dataType },
-        creds
+      creds
     )
     provisioned.push(data.createProjectV2Field.projectV2Field)
   }
 
-  // Provision all fields (sequential — GitHub GraphQL doesn't support batched mutations well)
-  await addSingleSelect('Priority', [
-    { name: 'Critical', color: 'RED'    },
-    { name: 'High',     color: 'ORANGE' },
-    { name: 'Medium',   color: 'YELLOW' },
-    { name: 'Low',      color: 'GRAY'   },
-  ])
-
-  await addField('Effort',        'NUMBER')
+  // Project-specific fields only.
+  // Priority and Effort live at org level (issue fields) — not created here.
   await addField('Due Date',      'DATE')
   await addField('Git Branch',    'TEXT')
   await addField('Pull Request',  'TEXT')
   await addField('Review round',  'NUMBER')
   await addField('Description',   'TEXT')
-
-  // Create standard arxys labels on the workspace repo (idempotent — 422 on existing is ignored)
-  const ARXYS_LABELS = [
-    { name: 'has-migration',  color: 'd73a4a', description: 'Ships a DB schema change — run migration before/after deploy' },
-    { name: 'has-env-change', color: 'e4e669', description: 'Requires .env updates on the server before deploying' },
-    { name: 'coding',         color: '0075ca', description: 'Actively being implemented' },
-    { name: 'reviewed',       color: '0e8a16', description: 'Code review passed' },
-    { name: 'pending-merge',  color: '5319e7', description: 'Review PR is open, awaiting merge' },
-    { name: 'issue-persists', color: 'd73a4a', description: 'Major issue found — sent back to developer' },
-    { name: 'hotfix',         color: 'b60205', description: 'Fast-track critical production fix' },
-    { name: 'need-info',      color: 'e4e669', description: 'Blocked on missing information before work can start' },
-  ]
-
-  const labelsCreated: string[] = []
-  const labelsSkipped: string[] = []
-
-  for (const label of ARXYS_LABELS) {
-    try {
-      await githubPost(`/repos/${ws.github_repo}/labels`, creds, label)
-      labelsCreated.push(label.name)
-    } catch {
-      // 422 = already exists — skip silently
-      labelsSkipped.push(label.name)
-    }
-  }
 
   // Persist the project ID to the workspace
   await c.env.DB
@@ -408,11 +500,10 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
     url:         projectUrl,
     provisioned: provisioned.map((f) => f.name),
     skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
-    labels_created: labelsCreated,
-    labels_skipped: labelsSkipped,
     manual_steps: {
       status_field: 'GitHub does not allow API access to the built-in Status field. Add these options manually in the project settings:',
       options: ARXYS_STATUSES,
+      org_bootstrap: 'Run POST /github/org/bootstrap first to provision org-level issue types and issue fields (Priority, Effort, Deploy Flags).',
     },
   }, 201)
 })
@@ -487,7 +578,7 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
         }
       }`,
       { projectId, cursor },
-        creds
+      creds
     )
     const page = data.node.items
     allItems.push(...page.nodes.filter((item: ProjectItem) => item.content?.__typename === 'Issue'))
@@ -561,7 +652,7 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
   const repo  = resolveRepo(body.repo, ws.github_repo)
   const issue = await githubGet(
     `/repos/${repo}/issues/${body.issue_number}`,
-      creds
+    creds
   ) as { node_id: string; number: number }
 
   const data = await githubGraphQL<{
@@ -573,7 +664,7 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
       }
     }`,
     { projectId, contentId: issue.node_id },
-      creds
+    creds
   )
 
   return c.json({ ok: true, item_id: data.addProjectV2ItemById.item.id, issue_number: issue.number }, 201)
@@ -581,7 +672,7 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
 
 // ---------------------------------------------------------------------------
 // PATCH /github/project/:projectId/issues/:itemId
-// Updates a single-select field on a project item (typically Status).
+// Updates a single-select or text/number/date field on a project item.
 // When updating Status: posts audit comment on the issue + fires Slack.
 // Body: { field_id: string, value: string }
 // ---------------------------------------------------------------------------
@@ -623,7 +714,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
       }
     }`,
     { projectId },
-      creds
+    creds
   )
 
   const matchedField = fieldData.node.fields.nodes.find((f) => f.id === body.field_id)
@@ -663,12 +754,11 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
         }
       }`,
       { projectId, itemId, fieldId: body.field_id, optionId: option.id },
-        creds
+      creds
     )
   } else {
     // TEXT / NUMBER / DATE fields
-    // If the value is numeric, try number type first; fall back to text on error.
-    const numVal = parseFloat(body.value)
+    const numVal   = parseFloat(body.value)
     const isNumeric = !isNaN(numVal) && String(numVal) === body.value.trim()
 
     if (isNumeric) {
@@ -685,7 +775,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
             }
           }`,
           { projectId, itemId, fieldId: body.field_id, num: numVal },
-            creds
+          creds
         )
       } catch {
         // Field is text type despite numeric value — fall through to text mutation
@@ -701,7 +791,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
             }
           }`,
           { projectId, itemId, fieldId: body.field_id, text: body.value },
-            creds
+          creds
         )
       }
     } else {
@@ -717,7 +807,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
           }
         }`,
         { projectId, itemId, fieldId: body.field_id, text: body.value },
-          creds
+        creds
       )
     }
   }
@@ -727,18 +817,16 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
     const issueRef = await getItemIssueRef(itemId, creds)
     if (issueRef) {
       const actor = member.id
-      // Audit comment on the GitHub issue (mirrors Notion's status change comment)
       await githubPost(
         `/repos/${issueRef.repo}/issues/${issueRef.number}/comments`, creds,
         { body: `(${actor}) Status: ${oldStatus ?? '?'} → ${body.value}` }
       ).catch(() => { /* non-fatal */ })
 
-      // Slack notification
       await slackNotifyTaskStatus(
         issueRef.number, issueRef.title,
         oldStatus ?? '?', body.value,
         issueRef.url,
-          creds
+        creds
       )
     }
   }
@@ -750,12 +838,12 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
 // PATCH /github/project/:projectId/issues/:itemId/assign
 // Assigns GitHub users (by login array) to the underlying issue.
 // Fires a Slack notification per assignee.
-// Body: { repo: string, assignees: string[] }
+// Body: { assignees: string[] }
 // ---------------------------------------------------------------------------
 githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
-  const creds   = c.get('credentials')
-  const itemId  = c.req.param('itemId')
-  const body    = await c.req.json<{ assignees: string[] }>()
+  const creds  = c.get('credentials')
+  const itemId = c.req.param('itemId')
+  const body   = await c.req.json<{ assignees: string[] }>()
 
   if (!body.assignees?.length) return c.json({ error: 'assignees array is required' }, 400)
 
@@ -765,7 +853,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
   // Merge new assignees with existing ones
   const issue = await githubGet(
     `/repos/${issueRef.repo}/issues/${issueRef.number}`,
-      creds
+    creds
   ) as { assignees: Array<{ login: string }> }
 
   const existing = issue.assignees.map((a) => a.login)
@@ -776,14 +864,13 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
     { assignees: body.assignees }
   )
 
-  // Slack per-assignee
   for (const login of body.assignees) {
     if (!existing.includes(login)) {
       await slackNotifyTaskAssigned(
         issueRef.number, issueRef.title,
         login, login,
         issueRef.url,
-          creds
+        creds
       )
     }
   }
@@ -794,7 +881,7 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/assign', async (c) => {
 // ---------------------------------------------------------------------------
 // PATCH /github/project/:projectId/issues/:itemId/unassign
 // Removes GitHub users from the underlying issue's assignees.
-// Body: { repo: string, assignees: string[] }
+// Body: { assignees: string[] }
 // ---------------------------------------------------------------------------
 githubProjectRoutes.patch('/:projectId/issues/:itemId/unassign', async (c) => {
   const creds  = c.get('credentials')
@@ -823,8 +910,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId/unassign', async (c) => {
 // ---------------------------------------------------------------------------
 // POST /github/project/:projectId/issues/:number/comment
 // Posts a comment on a GitHub issue (by issue number, not item ID).
-// Fires a Slack notification (same as Notion comment route).
-// Body: { repo: string, text: string }
+// Fires a Slack notification.
+// Body: { text: string }
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/:projectId/issues/:number/comment', async (c) => {
   const creds  = c.get('credentials')
@@ -834,10 +921,7 @@ githubProjectRoutes.post('/:projectId/issues/:number/comment', async (c) => {
 
   if (!body.text) return c.json({ error: 'text is required' }, 400)
 
-  // Resolve the issue's actual repo from the project item
-  // This handles cross-repo projects correctly without requiring body.repo
   const projectId = c.req.param('projectId')
-  // Find the item by issue number
   type PageResult = { node: { items: { nodes: Array<{ id: string; content: { __typename: string; number: number; repository: { nameWithOwner: string } } | null }>; pageInfo: { hasNextPage: boolean; endCursor: string } } } }
   let repo = ''
   let cursor: string | null = null
@@ -854,7 +938,7 @@ githubProjectRoutes.post('/:projectId/issues/:number/comment', async (c) => {
         }
       }`,
       { projectId, cursor },
-        creds
+      creds
     )
     for (const n of data.node.items.nodes) {
       if (n.content?.__typename === 'Issue' && n.content.number === number) {
@@ -912,7 +996,7 @@ githubProjectRoutes.get('/:projectId/fields', async (c) => {
       }
     }`,
     { projectId },
-      creds
+    creds
   )
 
   return c.json({ fields: data.node.fields.nodes })

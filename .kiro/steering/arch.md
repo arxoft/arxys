@@ -59,7 +59,7 @@ Planned evolution → 4 levels: `Venture → Client → Project → Workspace` (
 
 | Table | Key columns | Notes |
 |-------|-------------|-------|
-| `ventures` | `id` (slug), `slack_bot_token`, `slack_channel_id` | Top-level org unit |
+| `ventures` | `id` (slug), `slack_bot_token`, `slack_channel_id`, `github_org` | Top-level org unit; `github_org` is the GitHub org login (e.g. `arxoft`) used for all GitHub API calls |
 | `workspaces` | `id`, `venture_id`, `github_repo`, `board_type`, `notion_api_key`, `notion_database_id`, `github_project_id`, `slack_channel_id` | Anchors to one git repo; owns Notion + GitHub credentials |
 | `members` | `id` (slug), `api_key` (`axk_…`), `login_email` | Global; not venture-scoped |
 | `venture_members` | `venture_id`, `member_id`, `venture_role`, `github_pat`, `notion_user`, `email` | PAT lives here — per-venture per-member |
@@ -76,6 +76,19 @@ Planned evolution → 4 levels: `Venture → Client → Project → Workspace` (
 | `notion` | Notion only — `notion_api_key` + `notion_database_id` required |
 | `github` | GitHub Projects only — `github_project_id` required |
 | `both` | Both active simultaneously — all three fields required |
+
+### GitHub org-level provisioning (run once per org)
+
+`POST /v1/github/org/bootstrap` provisions:
+- **Issue Types** (org-wide): Task, Bug, Feature, Hotfix, Epic — via `POST /orgs/{org}/issue-types`
+- **Issue Fields** (org-wide): Deploy Flags (has-migration / has-env-change) — via org issue fields API
+
+`POST /v1/github/project/bootstrap` provisions per-project fields only:
+- Status, Git Branch, Pull Request, Review round, Description, Due Date
+
+Priority and Effort are GitHub's default org issue fields — no provisioning needed.
+
+**No repo labels are created or used.** All metadata lives at org or project level.
 
 ---
 

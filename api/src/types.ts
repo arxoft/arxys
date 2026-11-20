@@ -21,6 +21,7 @@ export type Variables = {
   venture:        {
     id: string
     slack_bot_token: string | null; slack_channel_id: string | null
+    github_org: string | null
   }
   ventureMember:  {
     venture_role: string; github_pat: string

@@ -48,11 +48,12 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   if (!workspace) return c.json({ error: `Workspace '${workspaceId}' not found` }, 404)
 
   const venture = await db
-    .prepare('SELECT id, slack_bot_token, slack_channel_id FROM ventures WHERE id = ?')
+    .prepare('SELECT id, slack_bot_token, slack_channel_id, github_org FROM ventures WHERE id = ?')
     .bind(workspace.venture_id)
     .first<{
       id: string
       slack_bot_token: string | null; slack_channel_id: string | null
+      github_org: string | null
     }>()
 
   if (!venture) return c.json({ error: 'Venture not found' }, 500)

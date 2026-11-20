@@ -47,7 +47,7 @@ adminRoutes.use('*', async (c, next) => {
 
 adminRoutes.get('/ventures', async (c) => {
   const rows = await c.env.DB
-    .prepare(`SELECT id, display_name, slack_channel_id, created_at,
+    .prepare(`SELECT id, display_name, slack_channel_id, github_org, created_at,
               CASE WHEN slack_bot_token IS NOT NULL AND slack_bot_token != '' THEN 1 ELSE 0 END as has_slack_token
               FROM ventures`)
     .all()
@@ -89,6 +89,7 @@ adminRoutes.patch('/ventures/:venture_id', async (c) => {
   const ventureId = c.req.param('venture_id')
   const body = await c.req.json<{
     display_name?: string; slack_bot_token?: string; slack_channel_id?: string
+    github_org?: string
   }>()
 
   const fields: string[] = []
@@ -97,6 +98,7 @@ adminRoutes.patch('/ventures/:venture_id', async (c) => {
   if (body.display_name    !== undefined) { fields.push('display_name = ?');    values.push(body.display_name) }
   if (body.slack_bot_token  !== undefined) { fields.push('slack_bot_token = ?');  values.push(body.slack_bot_token  || null) }
   if (body.slack_channel_id !== undefined) { fields.push('slack_channel_id = ?'); values.push(body.slack_channel_id || null) }
+  if (body.github_org       !== undefined) { fields.push('github_org = ?');       values.push(body.github_org       || null) }
 
   if (!fields.length) return c.json({ error: 'Nothing to update' }, 400)
 
@@ -113,10 +115,11 @@ adminRoutes.post('/ventures', async (c) => {
   const body = await c.req.json<{
     id: string; display_name: string
     slack_bot_token?: string; slack_channel_id?: string
+    github_org?: string
   }>()
   await c.env.DB
-    .prepare('INSERT INTO ventures (id, display_name, slack_bot_token, slack_channel_id) VALUES (?, ?, ?, ?)')
-    .bind(body.id, body.display_name, body.slack_bot_token ?? null, body.slack_channel_id ?? null)
+    .prepare('INSERT INTO ventures (id, display_name, slack_bot_token, slack_channel_id, github_org) VALUES (?, ?, ?, ?, ?)')
+    .bind(body.id, body.display_name, body.slack_bot_token ?? null, body.slack_channel_id ?? null, body.github_org ?? null)
     .run()
   return c.json({ ok: true, id: body.id }, 201)
 })
