@@ -504,6 +504,13 @@ export function VentureDetail() {
             await api.ventures.update(id!, { github_org: v })
             setVenture(p => p ? { ...p, github_org: v } : p)
           }} />
+        <Field label="GitHub App installation ID"
+          value={venture.github_app_installation_id ?? ''}
+          placeholder="12345678 (from github.com/settings/installations/…)"
+          onSave={async (v) => {
+            await api.ventures.update(id!, { github_app_installation_id: v })
+            setVenture(p => p ? { ...p, github_app_installation_id: v } : p)
+          }} />
         {!!venture.has_slack_token && !!venture.slack_channel_id && (
           <SlackTestButton ventureId={id!} />
         )}

@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono'
 import type { AppEnv } from '../types'
+import { getInstallationToken } from '../github/app-auth'
 
 // ---------------------------------------------------------------------------
 // Auth + context middleware
@@ -48,12 +49,12 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   if (!workspace) return c.json({ error: `Workspace '${workspaceId}' not found` }, 404)
 
   const venture = await db
-    .prepare('SELECT id, slack_bot_token, slack_channel_id, github_org FROM ventures WHERE id = ?')
+    .prepare('SELECT id, slack_bot_token, slack_channel_id, github_org, github_app_installation_id FROM ventures WHERE id = ?')
     .bind(workspace.venture_id)
     .first<{
       id: string
       slack_bot_token: string | null; slack_channel_id: string | null
-      github_org: string | null
+      github_org: string | null; github_app_installation_id: string | null
     }>()
 
   if (!venture) return c.json({ error: 'Venture not found' }, 500)
@@ -92,6 +93,26 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     c.set('workspaceRole', 'admin')
   }
 
+  // Resolve GitHub token: App installation token (preferred) → member PAT (fallback)
+  let githubToken: string
+  if (
+    venture.github_app_installation_id &&
+    c.env.GITHUB_APP_ID &&
+    c.env.GITHUB_APP_PRIVATE_KEY
+  ) {
+    githubToken = await getInstallationToken(
+      venture.github_app_installation_id,
+      c.env.GITHUB_APP_ID,
+      c.env.GITHUB_APP_PRIVATE_KEY
+    )
+  } else if (ventureMember.github_pat) {
+    githubToken = ventureMember.github_pat
+  } else {
+    return c.json({
+      error: 'No GitHub credentials configured. Set github_app_installation_id on the venture or github_pat on the member.'
+    }, 503)
+  }
+
   // Slack channel: workspace override → venture default → null
   const slackChannel = workspace.slack_channel_id ?? venture.slack_channel_id ?? null
 
@@ -104,7 +125,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     notionDatabaseId: workspace.notion_database_id,
     notionUser:       ventureMember.notion_user ?? member.id,
     notionUserEmail:  ventureMember.email ?? null,
-    githubToken:      ventureMember.github_pat,
+    githubToken,
     githubProjectId:  workspace.github_project_id,
     slackBotToken:    venture.slack_bot_token,
     slackChannelId:   slackChannel,

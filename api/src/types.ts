@@ -3,9 +3,11 @@
 // =============================================================================
 
 export type Bindings = {
-  DB:             D1Database
-  RESEND_API_KEY: string
-  RESEND_DOMAIN:  string
+  DB:                     D1Database
+  RESEND_API_KEY:         string
+  RESEND_DOMAIN:          string
+  GITHUB_APP_ID:          string
+  GITHUB_APP_PRIVATE_KEY: string
 }
 
 export type Variables = {
@@ -22,9 +24,10 @@ export type Variables = {
     id: string
     slack_bot_token: string | null; slack_channel_id: string | null
     github_org: string | null
+    github_app_installation_id: string | null
   }
   ventureMember:  {
-    venture_role: string; github_pat: string
+    venture_role: string; github_pat: string | null
     notion_user: string | null; email: string | null
   }
   workspaceRole:  string

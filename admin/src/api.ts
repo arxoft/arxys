@@ -44,7 +44,7 @@ export const api = {
     list:   () => get<Venture[]>('/admin/ventures', true),
     create: (b: Omit<Venture, 'created_at'>) =>
       post<{ ok: boolean; id: string }>('/admin/ventures', b, true),
-    update: (id: string, b: { display_name?: string; slack_bot_token?: string; slack_channel_id?: string; github_org?: string }) =>
+    update: (id: string, b: { display_name?: string; slack_bot_token?: string; slack_channel_id?: string; github_org?: string; github_app_installation_id?: string }) =>
       patch<{ ok: boolean }>(`/admin/ventures/${id}`, b, true),
     slackTest: (id: string) =>
       post<{ ok: boolean }>(`/admin/ventures/${id}/slack-test`, {}, true),
@@ -118,7 +118,10 @@ export const api = {
 // Types
 export interface Venture {
   id: string; display_name: string
-  has_slack_token?: number; slack_channel_id?: string; github_org?: string | null; created_at?: string
+  has_slack_token?: number; slack_channel_id?: string
+  github_org?: string | null
+  github_app_installation_id?: string | null
+  created_at?: string
 }
 export interface Workspace {
   id: string; venture_id: string; display_name: string
