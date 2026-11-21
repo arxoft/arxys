@@ -77,11 +77,11 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
 
   // Resolve GitHub token: App installation token (preferred) → member PAT (fallback)
   let githubToken: string
-  if (venture.github_app_installation_id && c.env.GITHUB_APP_ID && c.env.GITHUB_APP_PRIVATE_KEY) {
+  if (venture.github_app_installation_id && c.env.GH_APP_ID && c.env.GH_APP_PRIVATE_KEY) {
     githubToken = await getInstallationToken(
       venture.github_app_installation_id,
-      c.env.GITHUB_APP_ID,
-      c.env.GITHUB_APP_PRIVATE_KEY
+      c.env.GH_APP_ID,
+      c.env.GH_APP_PRIVATE_KEY
     )
   } else if (ventureMember.github_pat) {
     githubToken = ventureMember.github_pat

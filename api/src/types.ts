@@ -6,8 +6,8 @@ export type Bindings = {
   DB:                     D1Database
   RESEND_API_KEY:         string
   RESEND_DOMAIN:          string
-  GITHUB_APP_ID:          string
-  GITHUB_APP_PRIVATE_KEY: string
+  GH_APP_ID:          string
+  GH_APP_PRIVATE_KEY: string
 }
 
 export type Variables = {

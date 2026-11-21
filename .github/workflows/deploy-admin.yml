@@ -42,8 +42,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RESEND_API_KEY:            ${{ secrets.RESEND_API_KEY }}
           RESEND_DOMAIN:             ${{ secrets.RESEND_DOMAIN }}
-          GITHUB_APP_ID:             ${{ secrets.GITHUB_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY:    ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          GITHUB_APP_ID:             ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY:    ${{ secrets.GH_APP_PRIVATE_KEY }}
         run: |
           npm install --legacy-peer-deps
           jq -n '{

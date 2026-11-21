@@ -11,7 +11,7 @@ import type { AppEnv, Credentials } from './types'
 async function adminGithubCreds(
   ventureId: string,
   db: D1Database,
-  env: { GITHUB_APP_ID: string; GITHUB_APP_PRIVATE_KEY: string }
+  env: { GH_APP_ID: string; GH_APP_PRIVATE_KEY: string }
 ): Promise<{ creds: Credentials; error?: never } | { error: string; creds?: never }> {
   const venture = await db
     .prepare('SELECT github_app_installation_id FROM ventures WHERE id = ?')
@@ -22,12 +22,12 @@ async function adminGithubCreds(
 
   let githubToken: string
 
-  if (venture.github_app_installation_id && env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY) {
+  if (venture.github_app_installation_id && env.GH_APP_ID && env.GH_APP_PRIVATE_KEY) {
     try {
       githubToken = await getInstallationToken(
         venture.github_app_installation_id,
-        env.GITHUB_APP_ID,
-        env.GITHUB_APP_PRIVATE_KEY
+        env.GH_APP_ID,
+        env.GH_APP_PRIVATE_KEY
       )
     } catch (e: unknown) {
       return { error: e instanceof Error ? e.message : 'App token exchange failed' }
