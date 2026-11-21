@@ -104,8 +104,58 @@ function OrgBootstrapButton({ ventureId }: { ventureId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Project bootstrap button
+// Project list button
 // ---------------------------------------------------------------------------
+function FetchProjectsButton({ ventureId }: { ventureId: string }) {
+  const [state,    setState]    = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [projects, setProjects] = useState<Array<{ id: string; number: number; title: string; closed: boolean }>>([])
+  const [err,      setErr]      = useState('')
+
+  async function fetch_() {
+    setState('loading')
+    try {
+      const res = await api.ventures.fetchProjects(ventureId)
+      setProjects(res.projects)
+      setState('done')
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Error')
+      setState('error')
+      setTimeout(() => setState('idle'), 5000)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button style={{ fontSize: 12 }} disabled={state === 'loading'} onClick={fetch_}>
+        {state === 'loading' ? 'Fetching…' : '📋 Fetch projects'}
+      </button>
+      {state === 'error' && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--danger)' }}>{err}</span>}
+      {state === 'done' && projects.length === 0 && (
+        <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--muted)' }}>No projects found</span>
+      )}
+      {projects.length > 0 && (
+        <div style={{ marginTop: 10, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+          {projects.map((p) => (
+            <div key={p.id} className="row" style={{
+              padding: '8px 12px', borderBottom: '1px solid var(--border)',
+              fontSize: 12, gap: 10, background: 'var(--bg)',
+            }}>
+              <span style={{ fontWeight: 600, flex: 1 }}>
+                {p.closed ? <s style={{ color: 'var(--muted)' }}>{p.title}</s> : p.title}
+              </span>
+              <span className="mono" style={{ color: 'var(--muted)', fontSize: 11, userSelect: 'all' }}>{p.id}</span>
+              <button style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => {
+                navigator.clipboard.writeText(p.id)
+              }}>Copy</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function ProjectBootstrapButton({ workspaceId }: { workspaceId: string }) {
   const [state,  setState]  = useState<'idle' | 'running' | 'ok' | 'error'>('idle')
   const [result, setResult] = useState('')
@@ -454,11 +504,14 @@ export function VentureDetail() {
             await api.ventures.update(id!, { github_org: v })
             setVenture(p => p ? { ...p, github_org: v } : p)
           }} />
-        {venture.has_slack_token && venture.slack_channel_id && (
+        {!!venture.has_slack_token && !!venture.slack_channel_id && (
           <SlackTestButton ventureId={id!} />
         )}
         {venture.github_org && (
           <OrgBootstrapButton ventureId={id!} />
+        )}
+        {venture.github_org && (
+          <FetchProjectsButton ventureId={id!} />
         )}
       </div>
 

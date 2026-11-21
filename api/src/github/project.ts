@@ -173,118 +173,79 @@ function requireOrg(org: string | null, routeName: string): string {
   return org
 }
 
-// ---------------------------------------------------------------------------
-// POST /github/org/bootstrap
-// Provisions org-level issue types and issue fields.
-// Run once per org. Safe to re-run (idempotent).
-// Requires venture.github_org to be set.
-// ---------------------------------------------------------------------------
-githubProjectRoutes.post('/org/bootstrap', async (c) => {
-  const creds   = c.get('credentials')
-  const venture = c.get('venture')
-  const org     = requireOrg(venture.github_org, 'POST /github/org/bootstrap')
-
-  // Detect org vs personal account — personal accounts use /user/* endpoints
+// Exported for use by admin proxy routes (avoids Worker self-calling)
+export async function runOrgBootstrap(org: string, creds: Credentials): Promise<{
+  ok: boolean; org: string
+  issue_types: { created: string[]; skipped: string[] }
+  issue_fields: { created: string[]; skipped: string[]; manual_steps: string | null }
+}> {
+  // Detect org vs personal account
   let issueTypesBase: string
   let issueFieldsBase: string
   try {
     await githubGet(`/orgs/${org}`, creds)
-    issueTypesBase = `/orgs/${org}/issue-types`
+    issueTypesBase  = `/orgs/${org}/issue-types`
     issueFieldsBase = `/orgs/${org}/issue-fields`
   } catch {
-    // Personal account
-    issueTypesBase = `/user/issue-types`
+    issueTypesBase  = `/user/issue-types`
     issueFieldsBase = `/user/issue-fields`
   }
 
-  // ── Issue types ────────────────────────────────────────────────────────────
-  const existingTypes = await githubGet(issueTypesBase, creds) as Array<{
-    id: number; name: string; is_enabled: boolean
-  }>
-
+  // Issue types
+  const existingTypes = await githubGet(issueTypesBase, creds) as Array<{ id: number; name: string; is_enabled: boolean }>
   const typesCreated: string[] = []
   const typesSkipped: string[] = []
 
   for (const t of ARXYS_ISSUE_TYPES) {
-    const existing = existingTypes.find((e) => e.name.toLowerCase() === t.name.toLowerCase())
-    if (existing) {
-      typesSkipped.push(t.name)
-      continue
+    if (existingTypes.find((e) => e.name.toLowerCase() === t.name.toLowerCase())) {
+      typesSkipped.push(t.name); continue
     }
-    await githubPost(issueTypesBase, creds, {
-      name:        t.name,
-      is_enabled:  true,
-      color:       t.color,
-      description: t.description,
-    })
+    await githubPost(issueTypesBase, creds, { name: t.name, is_enabled: true, color: t.color, description: t.description })
     typesCreated.push(t.name)
   }
 
-  // ── Org-level issue fields ─────────────────────────────────────────────────
-  // The Issue Fields API uses a different base path under orgs planning settings.
-  // Endpoint: /orgs/{org}/properties/schema  (org custom properties — issue fields
-  // are part of the same surface for free-form; structured single-select issue
-  // fields use /orgs/{org}/issue-fields when that endpoint is GA, otherwise
-  // we use /orgs/{org}/properties/schema for custom properties).
-  //
-  // As of 2026, the dedicated issue fields endpoint is:
-  //   POST /orgs/{org}/issue-fields
-  // We attempt that and fall back gracefully with a manual_steps note if it
-  // returns 404 (org doesn't have the feature yet).
+  // Issue fields
   const fieldsCreated: string[] = []
   const fieldsSkipped: string[] = []
   const fieldsManual:  string[] = []
 
   let existingFields: Array<{ name: string }> = []
-  try {
-    existingFields = await githubGet(issueFieldsBase, creds) as Array<{ name: string }>
-  } catch {
-    // Feature not available — will note in manual_steps
-  }
+  try { existingFields = await githubGet(issueFieldsBase, creds) as Array<{ name: string }> } catch { /* not available */ }
 
   for (const field of ARXYS_ISSUE_FIELDS) {
-    const alreadyExists = existingFields.some(
-      (e) => e.name.toLowerCase() === field.name.toLowerCase()
-    )
-    if (alreadyExists) {
-      fieldsSkipped.push(field.name)
-      continue
+    if (existingFields.some((e) => e.name.toLowerCase() === field.name.toLowerCase())) {
+      fieldsSkipped.push(field.name); continue
     }
-
     if (existingFields.length === 0 && fieldsManual.length === 0) {
-      // API not available — record for manual_steps
-      fieldsManual.push(field.name)
-      continue
+      fieldsManual.push(field.name); continue
     }
-
     try {
-      await githubPost(issueFieldsBase, creds, {
-        name:        field.name,
-        data_type:   field.data_type,
-        description: field.description,
-        options:     field.options,
-      })
+      await githubPost(issueFieldsBase, creds, { name: field.name, data_type: field.data_type, description: field.description, options: field.options })
       fieldsCreated.push(field.name)
-    } catch {
-      fieldsManual.push(field.name)
-    }
+    } catch { fieldsManual.push(field.name) }
   }
 
-  return c.json({
-    ok:              true,
-    org,
-    issue_types: {
-      created: typesCreated,
-      skipped: typesSkipped,
-    },
+  return {
+    ok: true, org,
+    issue_types:  { created: typesCreated, skipped: typesSkipped },
     issue_fields: {
-      created: fieldsCreated,
-      skipped: fieldsSkipped,
+      created: fieldsCreated, skipped: fieldsSkipped,
       manual_steps: fieldsManual.length
         ? `Create these issue fields manually in org Settings → Planning → Issue fields: ${fieldsManual.join(', ')}`
         : null,
     },
-  })
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// POST /github/org/bootstrap
+// ---------------------------------------------------------------------------
+githubProjectRoutes.post('/org/bootstrap', async (c) => {
+  const creds   = c.get('credentials')
+  const venture = c.get('venture')
+  const org     = requireOrg(venture.github_org, 'POST /github/org/bootstrap')
+  return c.json(await runOrgBootstrap(org, creds))
 })
 
 // ---------------------------------------------------------------------------

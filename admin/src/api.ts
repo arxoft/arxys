@@ -51,6 +51,9 @@ export const api = {
     githubOrgBootstrap: (id: string) =>
       post<{ ok: boolean; org: string; issue_types: object; issue_fields: object }>(
         `/admin/ventures/${id}/github-org-bootstrap`, {}, true),
+    fetchProjects: (id: string) =>
+      get<{ projects: Array<{ id: string; number: number; title: string; url: string; closed: boolean }> }>(
+        `/admin/ventures/${id}/github-projects`, true),
   },
 
   workspaces: {

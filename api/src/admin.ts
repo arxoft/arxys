@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
-import type { AppEnv } from './types'
+import { githubGraphQL } from './github/client'
+import { runOrgBootstrap, ARXYS_STATUSES } from './github/project'
+import type { AppEnv, Credentials } from './types'
 
 // ---------------------------------------------------------------------------
 // Admin routes — venture/workspace/member management
@@ -560,40 +562,39 @@ adminRoutes.post('/ventures/:venture_id/github-org-bootstrap', async (c) => {
     .bind(ventureId)
     .first<{ github_org: string | null }>()
 
-  if (!venture)           return c.json({ error: 'Venture not found' }, 404)
+  if (!venture)            return c.json({ error: 'Venture not found' }, 404)
   if (!venture.github_org) return c.json({ error: 'github_org is not set on this venture' }, 400)
 
-  // Find any member's API key + PAT for this venture
-  const creds = await c.env.DB
+  const row = await c.env.DB
     .prepare(`
-      SELECT m.api_key, vm.github_pat
+      SELECT vm.github_pat, m.api_key
       FROM venture_members vm JOIN members m ON vm.member_id = m.id
       WHERE vm.venture_id = ? AND vm.github_pat IS NOT NULL AND vm.github_pat != ''
       LIMIT 1
     `)
     .bind(ventureId)
-    .first<{ api_key: string; github_pat: string }>()
+    .first<{ github_pat: string; api_key: string }>()
 
-  if (!creds) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
+  if (!row) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
 
-  // Find a workspace for this venture to supply X-Workspace header
-  const ws = await c.env.DB
-    .prepare('SELECT id FROM workspaces WHERE venture_id = ? LIMIT 1')
-    .bind(ventureId)
-    .first<{ id: string }>()
+  // Call bootstrap logic directly — no self-fetch (avoids Cloudflare 522)
+  const creds: Credentials = {
+    githubToken:      row.github_pat,
+    githubProjectId:  null,
+    notionApiKey:     null,
+    notionDatabaseId: null,
+    notionUser:       '',
+    notionUserEmail:  null,
+    slackBotToken:    null,
+    slackChannelId:   null,
+  }
 
-  if (!ws) return c.json({ error: 'No workspace found for this venture' }, 404)
-
-  const origin = new URL(c.req.url).origin
-  const res = await fetch(`${origin}/v1/github/project/org/bootstrap`, {
-    method: 'POST',
-    headers: {
-      'X-Api-Key':   creds.api_key,
-      'X-Workspace': ws.id,
-    },
-  })
-  const data = await res.json()
-  return c.json(data, res.status as 200)
+  try {
+    const result = await runOrgBootstrap(venture.github_org, creds)
+    return c.json(result)
+  } catch (e: unknown) {
+    return c.json({ error: e instanceof Error ? e.message : 'Bootstrap failed' }, 500)
+  }
 })
 
 // POST /admin/workspaces/:workspace_id/github-project-bootstrap
@@ -606,33 +607,90 @@ adminRoutes.post('/workspaces/:workspace_id/github-project-bootstrap', async (c)
     .bind(workspaceId)
     .first<{ venture_id: string; github_project_id: string | null }>()
 
-  if (!ws) return c.json({ error: 'Workspace not found' }, 404)
+  if (!ws)                   return c.json({ error: 'Workspace not found' }, 404)
   if (!ws.github_project_id) return c.json({ error: 'No github_project_id set on this workspace' }, 400)
 
-  const creds = await c.env.DB
+  const row = await c.env.DB
     .prepare(`
-      SELECT m.api_key
+      SELECT vm.github_pat
       FROM venture_members vm JOIN members m ON vm.member_id = m.id
       WHERE vm.venture_id = ? AND vm.github_pat IS NOT NULL AND vm.github_pat != ''
       LIMIT 1
     `)
     .bind(ws.venture_id)
-    .first<{ api_key: string }>()
+    .first<{ github_pat: string }>()
 
-  if (!creds) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
+  if (!row) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
 
-  const origin = new URL(c.req.url).origin
-  const res = await fetch(`${origin}/v1/github/project/bootstrap`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Api-Key':    creds.api_key,
-      'X-Workspace':  workspaceId,
+  const projectId = ws.github_project_id
+
+  // Fetch project details
+  const data = await githubGraphQL<{
+    node: { id: string; number: number; url: string; title: string }
+  }>(
+    `query($id: ID!) { node(id: $id) { ... on ProjectV2 { id number url title } } }`,
+    { id: projectId },
+    { githubToken: row.github_pat, githubProjectId: null, notionApiKey: null, notionDatabaseId: null, notionUser: '', notionUserEmail: null, slackBotToken: null, slackChannelId: null }
+  )
+  if (!data.node?.id) return c.json({ error: `Project '${projectId}' not found or not accessible` }, 404)
+
+  const creds: Credentials = {
+    githubToken:      row.github_pat,
+    githubProjectId:  projectId,
+    notionApiKey:     null,
+    notionDatabaseId: null,
+    notionUser:       '',
+    notionUserEmail:  null,
+    slackBotToken:    null,
+    slackChannelId:   null,
+  }
+
+  // Fetch existing fields
+  const existingData = await githubGraphQL<{
+    node: { fields: { nodes: Array<{ __typename: string; name: string }> } }
+  }>(
+    `query($id: ID!) { node(id: $id) { ... on ProjectV2 { fields(first: 50) { nodes { __typename ... on ProjectV2Field { name } ... on ProjectV2SingleSelectField { name } ... on ProjectV2IterationField { name } } } } } }`,
+    { id: projectId }, creds
+  )
+  const existingNames = new Set(existingData.node.fields.nodes.map((f) => f.name))
+  const provisioned: string[] = []
+
+  async function addField(name: string, dataType: 'TEXT' | 'NUMBER' | 'DATE') {
+    if (existingNames.has(name)) return
+    await githubGraphQL(
+      `mutation($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!) {
+        createProjectV2Field(input: { projectId: $projectId, dataType: $dataType, name: $name }) {
+          projectV2Field { ... on ProjectV2Field { id name } }
+        }
+      }`,
+      { projectId, name, dataType }, creds
+    )
+    provisioned.push(name)
+  }
+
+  await addField('Due Date',     'DATE')
+  await addField('Git Branch',   'TEXT')
+  await addField('Pull Request', 'TEXT')
+  await addField('Review round', 'NUMBER')
+  await addField('Description',  'TEXT')
+
+  await c.env.DB
+    .prepare('UPDATE workspaces SET github_project_id = ? WHERE id = ?')
+    .bind(projectId, workspaceId)
+    .run()
+
+  return c.json({
+    ok:          true,
+    project_id:  data.node.id,
+    number:      data.node.number,
+    url:         data.node.url,
+    provisioned,
+    skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
+    manual_steps: {
+      status_field: 'Add Status options manually in project settings:',
+      options: ARXYS_STATUSES,
     },
-    body: JSON.stringify({ project_id: ws.github_project_id }),
   })
-  const data = await res.json()
-  return c.json(data, res.status as 200)
 })
 
 
@@ -661,4 +719,71 @@ adminRoutes.post('/ventures/:venture_id/boards', async (c) => {
     .run()
 
   return c.json({ ok: true }, 201)
+})
+
+// GET /admin/ventures/:venture_id/github-projects
+// Lists GitHub Projects for the venture org — uses any member's PAT.
+// Returns name + PVT id for each project so admin can copy into workspace.
+adminRoutes.get('/ventures/:venture_id/github-projects', async (c) => {
+  const ventureId = c.req.param('venture_id')
+
+  const venture = await c.env.DB
+    .prepare('SELECT github_org FROM ventures WHERE id = ?')
+    .bind(ventureId)
+    .first<{ github_org: string | null }>()
+
+  if (!venture)            return c.json({ error: 'Venture not found' }, 404)
+  if (!venture.github_org) return c.json({ error: 'github_org is not set on this venture' }, 400)
+
+  const row = await c.env.DB
+    .prepare(`
+      SELECT vm.github_pat
+      FROM venture_members vm
+      WHERE vm.venture_id = ? AND vm.github_pat IS NOT NULL AND vm.github_pat != ''
+      LIMIT 1
+    `)
+    .bind(ventureId)
+    .first<{ github_pat: string }>()
+
+  if (!row) return c.json({ error: 'No member with a GitHub PAT found for this venture' }, 404)
+
+  const creds: Credentials = {
+    githubToken: row.github_pat, githubProjectId: null,
+    notionApiKey: null, notionDatabaseId: null, notionUser: '',
+    notionUserEmail: null, slackBotToken: null, slackChannelId: null,
+  }
+
+  const org = venture.github_org
+
+  // Try org first, fall back to user (personal account)
+  type ProjectNode = { id: string; number: number; title: string; url: string; closed: boolean }
+  let projects: ProjectNode[] = []
+
+  try {
+    const data = await githubGraphQL<{ organization: { projectsV2: { nodes: ProjectNode[] } } }>(
+      `query($login: String!) {
+        organization(login: $login) {
+          projectsV2(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { id number title url closed }
+          }
+        }
+      }`,
+      { login: org }, creds
+    )
+    projects = data.organization.projectsV2.nodes
+  } catch {
+    const data = await githubGraphQL<{ user: { projectsV2: { nodes: ProjectNode[] } } }>(
+      `query($login: String!) {
+        user(login: $login) {
+          projectsV2(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { id number title url closed }
+          }
+        }
+      }`,
+      { login: org }, creds
+    )
+    projects = data.user.projectsV2.nodes
+  }
+
+  return c.json({ projects })
 })

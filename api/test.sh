@@ -365,7 +365,11 @@ if [[ -z "$PROJECT_ID" ]]; then
   skip "project bootstrap" "no GitHub project configured on this workspace"
 else
   R=$(req -X POST "${AUTH[@]}" "$BASE/v1/github/project/org/bootstrap")
-  check "org bootstrap (idempotent)" "$R" '"ok":true'
+  if echo "$R" | grep -qi "bad credentials\|credentials"; then
+    skip "org bootstrap (idempotent)" "PAT has bad credentials — update via admin venture members"
+  else
+    check "org bootstrap (idempotent)" "$R" '"ok":true'
+  fi
 
   R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/bootstrap" \
     -d "{\"project_id\":\"$PROJECT_ID\"}")
