@@ -601,7 +601,7 @@ githubProjectRoutes.get('/:projectId/issues', async (c) => {
   }
 
   if (mine) {
-    const me = (await githubGet('/user', creds) as { login: string }).login
+    const me = creds.githubLogin ?? (await githubGet('/user', creds) as { login: string }).login
     issues = issues.filter((i) => i.assignees.includes(me))
   }
 

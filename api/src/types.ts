@@ -27,7 +27,7 @@ export type Variables = {
     github_app_installation_id: string | null
   }
   ventureMember:  {
-    venture_role: string; github_pat: string | null
+    venture_role: string; github_pat: string | null; github_login: string | null
     notion_user: string | null; email: string | null
   }
   workspaceRole:  string
@@ -46,6 +46,7 @@ export type Credentials = {
   notionUser:       string
   notionUserEmail:  string | null
   githubToken:      string
+  githubLogin:      string | null   // member's GitHub login — used for ?mine=1 with App tokens
   githubProjectId:  string | null
   slackBotToken:    string | null
   slackChannelId:   string | null

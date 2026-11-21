@@ -190,7 +190,7 @@ taskRoutes.get('/list', async (c) => {
     if (!q.icebox && !q.status) issues = issues.filter((i) => i.status !== 'Icebox')
     if (q.status)  issues = issues.filter((i) => i.status === q.status)
     if (q.mine === '1') {
-      const me = (await githubGet('/user', creds) as { login: string }).login
+      const me = creds.githubLogin ?? (await githubGet('/user', creds) as { login: string }).login
       issues = issues.filter((i) => i.assignees.includes(me))
     }
 

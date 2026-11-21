@@ -95,7 +95,7 @@ export const api = {
       venture_role?: string; notion_user?: string; email?: string
     }) => post(`/admin/ventures/${venture_id}/members`, b, true),
     update: (venture_id: string, member_id: string, b: {
-      github_pat?: string; venture_role?: string; notion_user?: string; email?: string
+      github_pat?: string; github_login?: string; venture_role?: string; notion_user?: string; email?: string
     }) => patch<{ ok: boolean }>(`/admin/ventures/${venture_id}/members/${member_id}`, b, true),
     remove: (venture_id: string, member_id: string) =>
       del(`/admin/ventures/${venture_id}/members/${member_id}`, true),
@@ -136,7 +136,7 @@ export interface Member {
 }
 export interface VentureMember {
   member_id: string; display_name: string; venture_role: string
-  notion_user: string | null; email: string | null
+  github_login: string | null; notion_user: string | null; email: string | null
 }
 export interface WorkspaceMember {
   member_id: string; display_name: string; workspace_role: string

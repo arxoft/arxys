@@ -280,7 +280,7 @@ export function VentureDetail() {
   })
   const [editVmTarget, setEditVmTarget] = useState<VentureMember | null>(null)
   const [editVmForm,   setEditVmForm]   = useState({
-    github_pat: '', venture_role: 'member', notion_user: '', email: '',
+    github_pat: '', github_login: '', venture_role: 'member', notion_user: '', email: '',
   })
   const [addWsmTarget, setAddWsmTarget] = useState<string>('')
   const [addWsmForm,   setAddWsmForm]   = useState({ member_id: '', workspace_role: 'member' })
@@ -398,7 +398,7 @@ export function VentureDetail() {
   // ── Edit venture member ───────────────────────────────────────────────────
   function openEditVm(vm: VentureMember) {
     setEditVmTarget(vm)
-    setEditVmForm({ github_pat: '', venture_role: vm.venture_role, notion_user: vm.notion_user ?? '', email: vm.email ?? '' })
+    setEditVmForm({ github_pat: '', github_login: vm.github_login ?? '', venture_role: vm.venture_role, notion_user: vm.notion_user ?? '', email: vm.email ?? '' })
     setMsg(''); editVmRef.current?.showModal()
   }
 
@@ -408,6 +408,7 @@ export function VentureDetail() {
     try {
       await api.ventureMembers.update(id!, editVmTarget.member_id, {
         github_pat:   editVmForm.github_pat   || undefined,
+        github_login: editVmForm.github_login || undefined,
         venture_role: editVmForm.venture_role as 'admin' | 'member',
         notion_user:  editVmForm.notion_user,
         email:        editVmForm.email,
@@ -747,7 +748,9 @@ export function VentureDetail() {
             <input type="email" value={editVmForm.email} onChange={evf('email')} placeholder="you@venture.com" /></div>
           <div className="field"><label>Notion user handle</label>
             <input value={editVmForm.notion_user} onChange={evf('notion_user')} placeholder="ako" /></div>
-          <div className="field"><label>GitHub PAT (blank = keep current)</label>
+          <div className="field"><label>GitHub login</label>
+            <input value={editVmForm.github_login} onChange={evf('github_login')} placeholder="github-username" /></div>
+          <div className="field"><label>GitHub PAT (blank = keep current, optional if App is configured)</label>
             <input value={editVmForm.github_pat} onChange={evf('github_pat')} placeholder="ghp_... (leave blank to keep)" /></div>
           {msg && <div className="error">{msg}</div>}
           <div className="actions">

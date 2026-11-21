@@ -490,11 +490,11 @@ adminRoutes.post('/ventures/:venture_id/members', async (c) => {
 adminRoutes.get('/ventures/:venture_id/members', async (c) => {
   const ventureId = c.req.param('venture_id')
   const rows = await c.env.DB
-    .prepare(`SELECT vm.member_id, m.display_name, vm.venture_role, vm.notion_user, vm.email
+    .prepare(`SELECT vm.member_id, m.display_name, vm.venture_role, vm.github_login, vm.notion_user, vm.email
               FROM venture_members vm JOIN members m ON vm.member_id = m.id
               WHERE vm.venture_id = ?`)
     .bind(ventureId)
-    .all<{ member_id: string; display_name: string; venture_role: string; notion_user: string | null; email: string | null }>()
+    .all<{ member_id: string; display_name: string; venture_role: string; github_login: string | null; notion_user: string | null; email: string | null }>()
   return c.json(rows.results)
 })
 
@@ -502,17 +502,18 @@ adminRoutes.get('/ventures/:venture_id/members', async (c) => {
 adminRoutes.patch('/ventures/:venture_id/members/:member_id', async (c) => {
   const { venture_id, member_id } = c.req.param()
   const body = await c.req.json<{
-    github_pat?: string; venture_role?: 'admin' | 'member'
+    github_pat?: string; github_login?: string; venture_role?: 'admin' | 'member'
     notion_user?: string; email?: string
   }>()
 
   const fields: string[] = []
   const values: unknown[] = []
 
-  if (body.github_pat   !== undefined) { fields.push('github_pat = ?');   values.push(body.github_pat) }
+  if (body.github_pat   !== undefined) { fields.push('github_pat = ?');   values.push(body.github_pat   || null) }
+  if (body.github_login !== undefined) { fields.push('github_login = ?'); values.push(body.github_login || null) }
   if (body.venture_role !== undefined) { fields.push('venture_role = ?'); values.push(body.venture_role) }
-  if (body.notion_user  !== undefined) { fields.push('notion_user = ?');  values.push(body.notion_user || null) }
-  if (body.email        !== undefined) { fields.push('email = ?');        values.push(body.email || null) }
+  if (body.notion_user  !== undefined) { fields.push('notion_user = ?');  values.push(body.notion_user  || null) }
+  if (body.email        !== undefined) { fields.push('email = ?');        values.push(body.email        || null) }
 
   if (!fields.length) return c.json({ error: 'Nothing to update' }, 400)
 

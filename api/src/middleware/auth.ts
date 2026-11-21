@@ -2,17 +2,6 @@ import type { Context, Next } from 'hono'
 import type { AppEnv } from '../types'
 import { getInstallationToken } from '../github/app-auth'
 
-// ---------------------------------------------------------------------------
-// Auth + context middleware
-//
-// Resolution chain:
-//   1. api_key       → member
-//   2. X-Workspace   → workspace → venture
-//   3. venture_members → PAT, email, venture_role
-//   4. workspace access check:
-//        venture admin  → implicit access to all workspaces
-//        venture member → must have workspace_members row
-// ---------------------------------------------------------------------------
 export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   const apiKey      = c.req.header('X-Api-Key')
   const workspaceId = c.req.header('X-Workspace')
@@ -22,7 +11,6 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
 
   const db = c.env.DB
 
-  // 1. Resolve member
   const member = await db
     .prepare('SELECT id, display_name FROM members WHERE api_key = ?')
     .bind(apiKey)
@@ -30,7 +18,6 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
 
   if (!member) return c.json({ error: 'Invalid API key' }, 401)
 
-  // 2. Resolve workspace + venture in one query
   const workspace = await db
     .prepare(`
       SELECT w.id, w.venture_id, w.display_name, w.github_repo,
@@ -59,15 +46,14 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
 
   if (!venture) return c.json({ error: 'Venture not found' }, 500)
 
-  // 3. Resolve venture membership
   const ventureMember = await db
     .prepare(`
-      SELECT venture_role, github_pat, notion_user, email
+      SELECT venture_role, github_pat, github_login, notion_user, email
       FROM venture_members WHERE venture_id = ? AND member_id = ?
     `)
     .bind(workspace.venture_id, member.id)
     .first<{
-      venture_role: string; github_pat: string
+      venture_role: string; github_pat: string | null; github_login: string | null
       notion_user: string | null; email: string | null
     }>()
 
@@ -75,8 +61,6 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     return c.json({ error: `You are not a member of venture '${workspace.venture_id}'` }, 403)
   }
 
-  // 4. Workspace access check
-  //    venture admin → bypass; venture member → needs workspace_members row
   if (ventureMember.venture_role !== 'admin') {
     const wsAccess = await db
       .prepare('SELECT workspace_role FROM workspace_members WHERE workspace_id = ? AND member_id = ?')
@@ -84,9 +68,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
       .first<{ workspace_role: string }>()
 
     if (!wsAccess) {
-      return c.json({
-        error: `You do not have access to workspace '${workspaceId}'`
-      }, 403)
+      return c.json({ error: `You do not have access to workspace '${workspaceId}'` }, 403)
     }
     c.set('workspaceRole', wsAccess.workspace_role)
   } else {
@@ -95,11 +77,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
 
   // Resolve GitHub token: App installation token (preferred) → member PAT (fallback)
   let githubToken: string
-  if (
-    venture.github_app_installation_id &&
-    c.env.GITHUB_APP_ID &&
-    c.env.GITHUB_APP_PRIVATE_KEY
-  ) {
+  if (venture.github_app_installation_id && c.env.GITHUB_APP_ID && c.env.GITHUB_APP_PRIVATE_KEY) {
     githubToken = await getInstallationToken(
       venture.github_app_installation_id,
       c.env.GITHUB_APP_ID,
@@ -113,12 +91,11 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     }, 503)
   }
 
-  // Slack channel: workspace override → venture default → null
   const slackChannel = workspace.slack_channel_id ?? venture.slack_channel_id ?? null
 
-  c.set('member',       member)
-  c.set('workspace',    workspace)
-  c.set('venture',      venture)
+  c.set('member',        member)
+  c.set('workspace',     workspace)
+  c.set('venture',       venture)
   c.set('ventureMember', ventureMember)
   c.set('credentials', {
     notionApiKey:     workspace.notion_api_key,
@@ -126,6 +103,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     notionUser:       ventureMember.notion_user ?? member.id,
     notionUserEmail:  ventureMember.email ?? null,
     githubToken,
+    githubLogin:      ventureMember.github_login,
     githubProjectId:  workspace.github_project_id,
     slackBotToken:    venture.slack_bot_token,
     slackChannelId:   slackChannel,
@@ -134,10 +112,6 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   await next()
 }
 
-// ---------------------------------------------------------------------------
-// Admin-only guard — checks workspace-level role
-// Use after authMiddleware
-// ---------------------------------------------------------------------------
 export function adminOnly(c: Context<AppEnv>, next: Next) {
   const role = c.get('workspaceRole')
   if (role !== 'admin') {
