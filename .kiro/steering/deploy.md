@@ -17,9 +17,25 @@ Both workers deploy automatically via GitHub Actions on push to `main`. The work
 
 Manual trigger is available on both via `workflow_dispatch` in GitHub Actions.
 
+## Deployment Rules
+
+1. **Always run the test suite after every deployment.** Both `deploy-api.yml` and `deploy-admin.yml` run `bash test.sh` as the final step. If tests fail, the deploy is broken — fix immediately before merging anything else.
+
+2. **Always add or update tests when making API changes.** Any new route, changed behaviour, or new bootstrap step must have a corresponding test in `api/test.sh`. Tests run against the live deployed API (`https://arxysapis.arxoft.com`) using `ARXYS_API_KEY` + `ARXYS_WORKSPACE` from GitHub secrets.
+
+3. **Required GitHub repo secrets for CI:**
+
+| Secret | Purpose |
+|--------|---------|
+| `CLOUDFLARE_API_TOKEN` | Wrangler deploys |
+| `RESEND_API_KEY` | API Worker OTP email |
+| `RESEND_DOMAIN` | API Worker OTP sender |
+| `ARXYS_API_KEY` | Test suite auth |
+| `ARXYS_WORKSPACE` | Test suite workspace |
+
 ---
 
-## Normal Deploy Flow
+
 
 ### When only code changes (no migration)
 

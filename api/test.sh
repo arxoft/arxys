@@ -356,6 +356,23 @@ for name,p in props.items():
 fi
 
 # ---------------------------------------------------------------------------
+# GITHUB BOOTSTRAP
+# ---------------------------------------------------------------------------
+section "GITHUB BOOTSTRAP"
+
+if [[ -z "$PROJECT_ID" ]]; then
+  skip "org bootstrap"     "no GitHub project configured on this workspace"
+  skip "project bootstrap" "no GitHub project configured on this workspace"
+else
+  R=$(req -X POST "${AUTH[@]}" "$BASE/v1/github/org/bootstrap")
+  check "org bootstrap (idempotent)" "$R" '"ok":true'
+
+  R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/bootstrap" \
+    -d "{\"project_id\":\"$PROJECT_ID\"}")
+  check "project bootstrap (idempotent)" "$R" '"ok":true'
+fi
+
+# ---------------------------------------------------------------------------
 # GITHUB REPO / USER / PR
 # ---------------------------------------------------------------------------
 section "GITHUB REPO / USER / PR"

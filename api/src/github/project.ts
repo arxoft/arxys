@@ -184,8 +184,21 @@ githubProjectRoutes.post('/org/bootstrap', async (c) => {
   const venture = c.get('venture')
   const org     = requireOrg(venture.github_org, 'POST /github/org/bootstrap')
 
+  // Detect org vs personal account — personal accounts use /user/* endpoints
+  let issueTypesBase: string
+  let issueFieldsBase: string
+  try {
+    await githubGet(`/orgs/${org}`, creds)
+    issueTypesBase = `/orgs/${org}/issue-types`
+    issueFieldsBase = `/orgs/${org}/issue-fields`
+  } catch {
+    // Personal account
+    issueTypesBase = `/user/issue-types`
+    issueFieldsBase = `/user/issue-fields`
+  }
+
   // ── Issue types ────────────────────────────────────────────────────────────
-  const existingTypes = await githubGet(`/orgs/${org}/issue-types`, creds) as Array<{
+  const existingTypes = await githubGet(issueTypesBase, creds) as Array<{
     id: number; name: string; is_enabled: boolean
   }>
 
@@ -198,7 +211,7 @@ githubProjectRoutes.post('/org/bootstrap', async (c) => {
       typesSkipped.push(t.name)
       continue
     }
-    await githubPost(`/orgs/${org}/issue-types`, creds, {
+    await githubPost(issueTypesBase, creds, {
       name:        t.name,
       is_enabled:  true,
       color:       t.color,
@@ -224,7 +237,7 @@ githubProjectRoutes.post('/org/bootstrap', async (c) => {
 
   let existingFields: Array<{ name: string }> = []
   try {
-    existingFields = await githubGet(`/orgs/${org}/issue-fields`, creds) as Array<{ name: string }>
+    existingFields = await githubGet(issueFieldsBase, creds) as Array<{ name: string }>
   } catch {
     // Feature not available — will note in manual_steps
   }
@@ -245,7 +258,7 @@ githubProjectRoutes.post('/org/bootstrap', async (c) => {
     }
 
     try {
-      await githubPost(`/orgs/${org}/issue-fields`, creds, {
+      await githubPost(issueFieldsBase, creds, {
         name:        field.name,
         data_type:   field.data_type,
         description: field.description,

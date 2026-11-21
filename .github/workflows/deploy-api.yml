@@ -14,7 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Wrangler 4 requires Node 22+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -23,8 +22,6 @@ jobs:
         working-directory: api
         run: npm install --legacy-peer-deps
 
-      # Code and secrets ship together in one Worker version, so a deploy can
-      # never go live without them. GitHub repo secrets are the source of truth.
       - name: Deploy Worker with secrets
         working-directory: api
         env:
@@ -38,3 +35,12 @@ jobs:
           jq -n '{RESEND_API_KEY: env.RESEND_API_KEY, RESEND_DOMAIN: env.RESEND_DOMAIN}' > "$RUNNER_TEMP/secrets.json"
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
+
+      - name: Run test suite
+        working-directory: api
+        env:
+          ARXYS_API_KEY:   ${{ secrets.ARXYS_API_KEY }}
+          ARXYS_WORKSPACE: ${{ secrets.ARXYS_WORKSPACE }}
+        run: |
+          sleep 5
+          bash test.sh
