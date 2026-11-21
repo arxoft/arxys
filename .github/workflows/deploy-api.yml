@@ -37,8 +37,8 @@ jobs:
           jq -n '{
             RESEND_API_KEY:         env.RESEND_API_KEY,
             RESEND_DOMAIN:          env.RESEND_DOMAIN,
-            GITHUB_APP_ID:          env.GITHUB_APP_ID,
-            GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY
+            GH_APP_ID:              env.GITHUB_APP_ID,
+            GH_APP_PRIVATE_KEY:     env.GITHUB_APP_PRIVATE_KEY
           }' > "$RUNNER_TEMP/secrets.json"
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
