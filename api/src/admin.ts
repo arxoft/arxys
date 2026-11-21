@@ -585,7 +585,7 @@ adminRoutes.post('/ventures/:venture_id/github-org-bootstrap', async (c) => {
   if (!ws) return c.json({ error: 'No workspace found for this venture' }, 404)
 
   const origin = new URL(c.req.url).origin
-  const res = await fetch(`${origin}/v1/github/org/bootstrap`, {
+  const res = await fetch(`${origin}/v1/github/project/org/bootstrap`, {
     method: 'POST',
     headers: {
       'X-Api-Key':   creds.api_key,

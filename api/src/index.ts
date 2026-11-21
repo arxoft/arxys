@@ -172,7 +172,7 @@ app.get('/', (c) => c.json({
     'github/project': {
       description: 'GitHub Projects v2 — task boards (GraphQL-backed). Requires venture.github_org to be set.',
       routes: [
-        'POST /v1/github/org/bootstrap                                                       → provision org-level issue types (Task/Bug/Feature/Hotfix/Epic) + issue fields (Deploy Flags). Run once per org, safe to re-run.',
+        'POST /v1/github/project/org/bootstrap                                                       → provision org-level issue types (Task/Bug/Feature/Hotfix/Epic) + issue fields (Deploy Flags). Run once per org, safe to re-run.',
         'GET  /v1/github/project/list                                                        → list projects for venture org',
         'GET  /v1/github/project/members                                                     → list org members (equiv. to notion/user/list)',
         'POST /v1/github/project              { title }                                      → create project under venture org',

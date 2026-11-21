@@ -364,7 +364,7 @@ if [[ -z "$PROJECT_ID" ]]; then
   skip "org bootstrap"     "no GitHub project configured on this workspace"
   skip "project bootstrap" "no GitHub project configured on this workspace"
 else
-  R=$(req -X POST "${AUTH[@]}" "$BASE/v1/github/org/bootstrap")
+  R=$(req -X POST "${AUTH[@]}" "$BASE/v1/github/project/org/bootstrap")
   check "org bootstrap (idempotent)" "$R" '"ok":true'
 
   R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/bootstrap" \
