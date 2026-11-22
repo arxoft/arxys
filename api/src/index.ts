@@ -166,7 +166,6 @@ app.get('/', (c) => c.json({
         'POST /v1/github/issue            { repo, title, body_text? }     → create issue',
         'PATCH /v1/github/issue/:number   { state?, title?, ... }         → update issue',
         'POST /v1/github/issue/:number/comment { text }                   → add comment',
-        'POST /v1/github/issue/:number/transfer?repo=owner/repo { to_repo } → move issue to another repo (admin only; gets a new number)',
       ],
     },
 

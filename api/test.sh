@@ -100,15 +100,19 @@ FIELDS=""
 STATUS_FIELD=""
 ITEM_STATUS=""
 
+# Write tests only ever touch a dedicated demo task (title starts with '[arxys demo]'),
+# never a real task. No such task on the board → write tests are skipped.
 if [[ -n "$PROJECT_ID" ]]; then
   ITEM_DATA=$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues?icebox=1")
   ITEM_ID=$(echo "$ITEM_DATA" | python3 -c "
 import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
-print(issues[0]['item_id'] if issues else '')
+t=next((i for i in issues if i['title'].startswith('[arxys demo]')),None)
+print(t['item_id'] if t else '')
 " 2>/dev/null)
   ISSUE_NO=$(echo "$ITEM_DATA" | python3 -c "
 import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
-print(issues[0]['number'] if issues else '')
+t=next((i for i in issues if i['title'].startswith('[arxys demo]')),None)
+print(t['number'] if t else '')
 " 2>/dev/null)
   FIELDS=$(req "${AUTH[@]}" "$BASE/v1/github/project/$PROJECT_ID/fields")
   STATUS_FIELD=$(echo "$FIELDS" | python3 -c "
@@ -118,7 +122,8 @@ print(f['id'] if f else '')
 " 2>/dev/null)
   ITEM_STATUS=$(echo "$ITEM_DATA" | python3 -c "
 import sys,json; d=json.load(sys.stdin); issues=d.get('issues',[])
-print(issues[0].get('status','') if issues else '')
+t=next((i for i in issues if i['title'].startswith('[arxys demo]')),None)
+print(t.get('status','') if t else '')
 " 2>/dev/null)
 fi
 
@@ -257,9 +262,6 @@ if [[ -n "$ISSUE_NO" ]]; then
 
   check "task/:ref GET exposes issue_fields" "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")" '"issue_fields"'
 
-  # Transfer route validates input before touching GitHub
-  R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/issue/$ISSUE_NO/transfer" -d '{}')
-  check "issue transfer requires to_repo" "$R" 'to_repo is required'
 
 
   # One tracking repo per project: adding another repo's issue is rejected (before any GitHub call)
