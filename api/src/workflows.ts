@@ -73,13 +73,13 @@ const RULES_CONTENT = `# arxys Task Rules
 | **Description** | Every task must answer: *what*, *why*, and *acceptance criteria*. Lives in the GitHub issue body — set at creation via \`body_text\`, or edit later with \`PATCH /v1/github/issue/:number { "body": "..." }\`. |
 | **Comments** | Short and focused. One concern per comment. Reference issues and PRs with \`#42\` — GitHub auto-links with live title and status. |
 | **Status change** | Always post a comment explaining *why* before changing Status. The API auto-posts an audit comment too — yours is the reasoning one. |
-| **Effort** | Fibonacci points: 1 · 2 · 3 · 5 · 8 · 13. Set on every task. 13 = too big, consider splitting. |
+| **Effort** | Low · Medium · High (GitHub default Effort field). Set on every task. If a task feels bigger than High, consider splitting it. |
 | **Labels** | Use GitHub labels. Standard labels are created by \`POST /v1/github/project/bootstrap\`. Add them to issues via \`PATCH /v1/github/issue/:number { "labels": ["has-migration"] }\`. |
 | **Git Branch** | Set on the task after creating the branch: \`PATCH /v1/task/:ref { "field": "Git Branch", "value": "..." }\`. |
 | **Pull Request** | Set on the task after opening the PR: \`PATCH /v1/task/:ref { "field": "Pull Request", "value": "https://github.com/..." }\`. |
 | **Review round** | Incremented by the reviewer before sending a task back. \`PATCH /v1/task/:ref { "field": "Review round", "value": "2" }\`. |
 | **Icebox** | Parked work. Ignore unless a human names it explicitly. \`GET /v1/task/list\` excludes Icebox by default. |
-| **Priority** | Critical · High · Medium · Low. Set by ako (CTO). Do not change without explicit instruction. If something feels wrong, comment on the task. |
+| **Priority** | Urgent · High · Medium · Low (GitHub default Priority field). Set by ako (CTO). Do not change without explicit instruction. If something feels wrong, comment on the task. |
 
 ## Standard Labels
 
@@ -160,21 +160,18 @@ PATCH /v1/github/issue/:number
 
 ---
 
-## 3. Set Effort Points
+## 3. Set Effort
 
 \`\`\`http
 PATCH /v1/task/:ref
-{ "field": "Effort", "value": "3" }
+{ "field": "Effort", "value": "Medium" }
 \`\`\`
 
-| Points | Meaning |
+| Effort | Meaning |
 |---|---|
-| 1 | Trivial — config change, typo fix |
-| 2 | Small — straightforward, well-understood |
-| 3 | Medium-small — some thought required |
-| 5 | Medium — meaningful work, some unknowns |
-| 8 | Large — complex, touches multiple areas |
-| 13 | Very large — high uncertainty; consider splitting |
+| Low | Small — straightforward, well-understood |
+| Medium | Meaningful work, some unknowns |
+| High | Large or uncertain — touches multiple areas; consider splitting |
 
 ---
 
@@ -204,7 +201,7 @@ Notion: \`PATCH /v1/task/:ref { "field": "Tags", "value": "has-migration" }\`
 - [ ] Title is 9–12 words, clear intent
 - [ ] Description answers: what, why, acceptance criteria
 - [ ] Relevant docs or designs linked
-- [ ] Effort points set
+- [ ] Effort set
 - [ ] Priority set
 - [ ] \`has-migration\` or \`has-env-change\` labels added if known
 `)
@@ -515,7 +512,7 @@ POST /v1/task
 { "title": "Hotfix: short description", "body_text": "<full bug details>" }
 
 PATCH /v1/task/:ref
-{ "field": "Priority", "value": "Critical" }
+{ "field": "Priority", "value": "Urgent" }
 
 PATCH /v1/task/:ref
 { "field": "Status", "value": "In Progress" }
@@ -682,7 +679,7 @@ XP + Kanban, continuous flow. No sprints. Priority is set by ako (CTO) — do no
 A task in **Backlog** is ready to be pulled, by definition:
 - Title 9–12 words, clear intent
 - Description: what, why, acceptance criteria
-- Effort set (Fibonacci 1–13)
+- Effort set (Low / Medium / High)
 - Linked to milestone where applicable
 
 Shape tasks in **Planning**. Move to **Backlog** only when nothing further is needed before someone starts.

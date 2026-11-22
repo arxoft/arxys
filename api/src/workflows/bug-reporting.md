@@ -85,11 +85,11 @@ POST /v1/task/:ref/comment
 
 ## 4. Set Severity as Priority
 
-Map severity to Priority:
+Map severity to Priority (Critical severity → **Urgent**; High, Medium and Low map directly):
 
 ```http
 PATCH /v1/task/:ref
-{ "field": "Priority", "value": "Critical" }
+{ "field": "Priority", "value": "Urgent" }
 ```
 
 Critical bugs skip the normal backlog queue — flag immediately and notify the team via Slack:

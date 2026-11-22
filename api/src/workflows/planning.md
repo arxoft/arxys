@@ -14,7 +14,7 @@ Work is shaped in **Planning**, and only moves to **Backlog** once it meets thes
 
 - Title is 9–12 words, clear intent
 - Description answers: what, why, acceptance criteria
-- Effort points set (Fibonacci 1–13)
+- Effort set (Low / Medium / High)
 - Linked to a milestone where applicable
 
 Shaping a task — writing acceptance criteria, sizing it, splitting it — is what **Planning** is for. Moving a task from Planning to Backlog asserts it needs nothing further before someone can start.
@@ -51,7 +51,7 @@ PATCH /v1/task/:ref
 { "field": "Priority", "value": "High" }
 ```
 
-Values: **Critical · High · Medium · Low**
+Values: **Urgent · High · Medium · Low**
 
 Do not change priority without explicit instruction from ako. If a task feels more urgent, comment:
 

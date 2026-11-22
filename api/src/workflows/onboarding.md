@@ -102,4 +102,4 @@ When in doubt — read the task, read the comments, read the existing code. Ask 
 | Never commit without instruction | Agent proposes commit messages; human commits |
 | No new abstractions | Match existing code patterns exactly |
 | Short titles | 9–12 words, describes the work clearly |
-| Effort points | Set Fibonacci estimate on every task |
+| Effort | Set Effort (Low / Medium / High) on every task |

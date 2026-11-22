@@ -15,7 +15,7 @@ Replace with:
 ```
 # Update a field on a project item (fires Slack + posts audit comment on Status changes)
 # Get field_id first: GET /v1/github/project/<project_id>/fields
-# Works for all field types: Status (single select), Git Branch, Pull Request (text), Effort (number), etc.
+# Works for all field types: Status (single select), Git Branch, Pull Request (text), etc.
 PATCH  /v1/github/project/<project_id>/issues/<item_id>  { "field_id": "PVTF_...", "value": "In Progress" }
 ```
 

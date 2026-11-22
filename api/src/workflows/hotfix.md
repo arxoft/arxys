@@ -25,7 +25,7 @@ Then immediately set priority and status:
 
 ```http
 PATCH /v1/task/:ref
-{ "field": "Priority", "value": "Critical" }
+{ "field": "Priority", "value": "Urgent" }
 
 PATCH /v1/task/:ref
 { "field": "Status", "value": "In Progress" }

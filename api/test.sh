@@ -248,8 +248,8 @@ if [[ -n "$ISSUE_NO" ]]; then
   check "task/:ref GET" "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")" '"backend"'
 
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
-    -d '{"field":"Effort","value":"5"}')
-  check "task PATCH Effort" "$R" '"ok":true'
+    -d '{"field":"Effort","value":"Medium"}')
+  check "task PATCH Effort (issue field)" "$R" '"ok":true'
 
   # Priority/Effort are org-level issue fields (not project fields)
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
@@ -262,7 +262,7 @@ if [[ -n "$ISSUE_NO" ]]; then
 
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
     -d '{"field":"Effort","value":"abc"}')
-  check "task PATCH Effort non-numeric → rejected" "$R" 'is not a number'
+  check "task PATCH Effort invalid → rejected" "$R" 'Unknown value'
 
   if [[ -n "$ME" ]]; then
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO/assign" \

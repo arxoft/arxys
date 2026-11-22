@@ -70,23 +70,20 @@ POST /v1/task/:ref/comment
 
 ---
 
-## 4. Set Effort Points
+## 4. Set Effort
 
 ```http
 PATCH /v1/task/:ref
-{ "field": "Effort", "value": "3" }
+{ "field": "Effort", "value": "Medium" }
 ```
 
-| Points | Meaning |
+| Effort | Meaning |
 |---|---|
-| 1 | Trivial — config change, typo fix |
-| 2 | Small — straightforward, well-understood |
-| 3 | Medium-small — some thought required |
-| 5 | Medium — meaningful work, some unknowns |
-| 8 | Large — complex, touches multiple areas |
-| 13 | Very large — high uncertainty; consider splitting |
+| Low | Small — straightforward, well-understood |
+| Medium | Meaningful work, some unknowns |
+| High | Large or uncertain — touches multiple areas; consider splitting |
 
-If a task feels like 13, try to break it into smaller tasks first.
+If a task feels bigger than High, break it into smaller tasks first.
 
 ---
 
@@ -117,6 +114,6 @@ Add these immediately if you already know the task will require them:
 - [ ] Title is 9–12 words, clear intent
 - [ ] Description answers: what, why, acceptance criteria
 - [ ] Relevant docs or designs linked
-- [ ] Effort points set
+- [ ] Effort set
 - [ ] Priority set
 - [ ] `has-migration` or `has-env-change` labels/tags added if known
