@@ -84,3 +84,18 @@ export async function setIssueFieldValue(
     API_VERSION
   )
 }
+
+// Current org issue-field values on an issue, simplified to name/value pairs.
+// Non-fatal: returns [] if issue fields are unavailable.
+export async function getIssueFieldValues(
+  repo: string, issueNumber: number, creds: Credentials
+): Promise<Array<{ name: string; value: unknown }>> {
+  try {
+    const rows = await githubGet(
+      `/repos/${repo}/issues/${issueNumber}/issue-field-values`, creds, API_VERSION
+    ) as Array<{ issue_field_name: string; value: unknown; single_select_option?: { name: string } }>
+    return rows.map((r) => ({ name: r.issue_field_name, value: r.single_select_option?.name ?? r.value }))
+  } catch {
+    return []
+  }
+}

@@ -173,6 +173,31 @@ function requireOrg(org: string | null, routeName: string): string {
   return org
 }
 
+// ---------------------------------------------------------------------------
+// Project DATE fields need { date: ... } — { text: ... } is rejected by GitHub.
+// Returns true if value is an ISO date (YYYY-MM-DD) and the field accepted it;
+// false means "not a date field / not a date value" and the caller should fall
+// back to its text/number handling.
+// ---------------------------------------------------------------------------
+export async function trySetProjectDate(
+  projectId: string, itemId: string, fieldId: string, value: string, creds: Credentials
+): Promise<boolean> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false
+  try {
+    await githubGraphQL(
+      `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+          value: { date: $date }
+        }) { projectV2Item { id } }
+      }`,
+      { projectId, itemId, fieldId, date: value.trim() }, creds)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Exported for use by admin proxy routes (avoids Worker self-calling)
 export async function runOrgBootstrap(org: string, creds: Credentials): Promise<{
   ok: boolean; org: string
@@ -715,6 +740,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
   const oldStatus = isStatusField ? await getItemStatus(projectId, itemId, creds) : null
 
   // Apply the update — value shape differs by field type
+  const dateDone = !isSingleSelect && await trySetProjectDate(projectId, itemId, body.field_id, body.value, creds)
+
   if (isSingleSelect && option) {
     await githubGraphQL(
       `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
@@ -730,8 +757,8 @@ githubProjectRoutes.patch('/:projectId/issues/:itemId', async (c) => {
       { projectId, itemId, fieldId: body.field_id, optionId: option.id },
       creds
     )
-  } else {
-    // TEXT / NUMBER / DATE fields
+  } else if (!dateDone) {
+    // TEXT / NUMBER fields (DATE handled above)
     const numVal   = parseFloat(body.value)
     const isNumeric = !isNaN(numVal) && String(numVal) === body.value.trim()
 

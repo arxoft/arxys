@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { githubGet, githubPost, githubGraphQL, resolveRepo } from './github/client'
-import { findIssueField, coerceIssueFieldValue, setIssueFieldValue } from './github/issue-fields'
+import { findIssueField, coerceIssueFieldValue, setIssueFieldValue, getIssueFieldValues } from './github/issue-fields'
+import { trySetProjectDate } from './github/project'
 import { notionGet, notionPost, notionPatch, resolveNotionUserId } from './notion/client'
 import { slackNotifyTaskStatus, slackNotifyTaskAssigned } from './slack/notify'
 import type { AppEnv, Credentials } from './types'
@@ -238,11 +239,12 @@ taskRoutes.get('/:ref', async (c) => {
     const repoMatch = item.url.match(/github\.com\/(.+?)\/issues\//)
     const repo = repoMatch ? repoMatch[1] : resolveRepo(undefined, c.get('workspace').github_repo)
 
-    const [issue, comments] = await Promise.all([
+    const [issue, comments, issue_fields] = await Promise.all([
       githubGet(`/repos/${repo}/issues/${ref}`, creds),
       githubGet(`/repos/${repo}/issues/${ref}/comments`, creds),
+      getIssueFieldValues(repo, ref, creds),
     ])
-    return c.json({ task: issue, comments, backend: 'github' })
+    return c.json({ task: issue, comments, issue_fields, backend: 'github' })
   }
 
   const pageId = await notionResolvePageId(ref, creds)
@@ -340,6 +342,10 @@ taskRoutes.patch('/:ref', async (c) => {
 
     const isSingleSelect = matched.__typename === 'ProjectV2SingleSelectField'
     const isStatus       = matched.name === 'Status'
+
+    if (!isSingleSelect && await trySetProjectDate(projectId, item.itemId, matched.id, body.value, creds)) {
+      return c.json({ ok: true, ref, field: matched.name, value: body.value, backend: 'github' })
+    }
 
     if (isSingleSelect) {
       const option = matched.options?.find((o) => o.name.toLowerCase() === body.value.toLowerCase())

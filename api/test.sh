@@ -251,6 +251,12 @@ if [[ -n "$ISSUE_NO" ]]; then
     -d '{"field":"Effort","value":"Medium"}')
   check "task PATCH Effort (issue field)" "$R" '"ok":true'
 
+  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
+    -d '{"field":"Due Date","value":"2026-12-15"}')
+  check "task PATCH Due Date (project date field)" "$R" '"ok":true'
+
+  check "task/:ref GET exposes issue_fields" "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")" '"issue_fields"'
+
   # Priority/Effort are org-level issue fields (not project fields)
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
     -d '{"field":"Priority","value":"Medium"}')
