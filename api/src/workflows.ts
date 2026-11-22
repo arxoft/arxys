@@ -70,7 +70,7 @@ const RULES_CONTENT = `# arxys Task Rules
 | Rule | Guideline |
 |---|---|
 | **Title** | 9–12 words max. Describes the work clearly — no filler ("we need to", "please", "I want to"). |
-| **Description** | Every task must answer: *what*, *why*, and *acceptance criteria*. Set in the GitHub issue body or via \`PATCH /v1/task/:ref { "field": "Description", "value": "..." }\`. |
+| **Description** | Every task must answer: *what*, *why*, and *acceptance criteria*. Lives in the GitHub issue body — set at creation via \`body_text\`, or edit later with \`PATCH /v1/github/issue/:number { "body": "..." }\`. |
 | **Comments** | Short and focused. One concern per comment. Reference issues and PRs with \`#42\` — GitHub auto-links with live title and status. |
 | **Status change** | Always post a comment explaining *why* before changing Status. The API auto-posts an audit comment too — yours is the reasoning one. |
 | **Effort** | Fibonacci points: 1 · 2 · 3 · 5 · 8 · 13. Set on every task. 13 = too big, consider splitting. |
@@ -151,11 +151,11 @@ POST /v1/task
 }
 \`\`\`
 
-Or update it after creation:
+Or update it after creation by editing the issue body:
 
 \`\`\`http
-PATCH /v1/task/:ref
-{ "field": "Description", "value": "What: ...\\nWhy: ...\\nAcceptance Criteria:\\n- ..." }
+PATCH /v1/github/issue/:number
+{ "body": "What: ...\\nWhy: ...\\nAcceptance Criteria:\\n- ..." }
 \`\`\`
 
 ---

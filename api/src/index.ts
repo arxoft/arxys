@@ -176,7 +176,7 @@ app.get('/', (c) => c.json({
         'GET  /v1/github/project/list                                                        → list projects for venture org',
         'GET  /v1/github/project/members                                                     → list org members (equiv. to notion/user/list)',
         'POST /v1/github/project              { title }                                      → create project under venture org',
-        'POST /v1/github/project/bootstrap    { project_id? OR title }                      → provision project fields (Status, Git Branch, Pull Request, Review round, Description, Due Date). Run org/bootstrap first.',
+        'POST /v1/github/project/bootstrap    { project_id? OR title }                      → provision project fields (Status, Git Branch, Pull Request, Review round, Due Date). Run org/bootstrap first.',
         'GET  /v1/github/project/:id/issues                                                  → list issues (Icebox hidden by default)',
         'GET  /v1/github/project/:id/issues?status=In+Progress                               → filter by status',
         'GET  /v1/github/project/:id/issues?mine=1                                           → your issues',

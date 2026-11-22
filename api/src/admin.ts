@@ -661,7 +661,6 @@ adminRoutes.post('/workspaces/:workspace_id/github-project-bootstrap', async (c)
   await addField('Git Branch',   'TEXT')
   await addField('Pull Request', 'TEXT')
   await addField('Review round', 'NUMBER')
-  await addField('Description',  'TEXT')
 
   await c.env.DB
     .prepare('UPDATE workspaces SET github_project_id = ? WHERE id = ?')

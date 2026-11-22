@@ -56,9 +56,9 @@ notionDbRoutes.post('/bootstrap', async (c) => {
     databaseId = row.database_id
   }
 
-  // Standard arxys schema for Notion knowledge-base databases.
-  // Project-management-only fields (Depends on, Pull Request, Git Branch,
-  // Review round) are intentionally excluded — those belong in GHP.
+  // Standard arxys schema for Notion databases. Notion is no longer the
+  // primary project-management board (that is GHP), but it remains fully
+  // supported for todos and relational DBs, so the full field set is kept.
   const properties: Record<string, unknown> = {
     'Status': {
       status: {
@@ -93,6 +93,10 @@ notionDbRoutes.post('/bootstrap', async (c) => {
     'Tags':        { multi_select: { options: [] } },
     'Description': { rich_text: {} },
     'Effort':      { number: { format: 'number' } },
+    'Git Branch':   { rich_text: {} },
+    'Pull Request': { url: {} },
+    'Review round': { number: { format: 'number' } },
+    'Depends on':   { relation: { database_id: databaseId, single_property: {} } },
   }
 
   await notionPatch(`/databases/${databaseId}`, creds, { properties })

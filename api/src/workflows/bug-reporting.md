@@ -32,7 +32,7 @@ Title convention: describe the broken behaviour, not the fix.
 
 ## 2. Write the Bug Description
 
-Required fields in the description (set in the issue body or via `PATCH /v1/task/:ref { "field": "Description" }`):
+Required fields in the description (set in the issue body — at creation via `body_text`, or later via `PATCH /v1/github/issue/:number { "body": "..." }`):
 
 **Environment** — where observed (production / staging / local, browser, OS, version)
 

@@ -16,143 +16,124 @@ permissions the app needs. Rotation is automatic. The app survives member turnov
 ## Target architecture
 
 ```
-venture_members.github_pat  (current)
+venture_members.github_pat  (old — now nullable, kept for fallback)
       ↓
-ventures.github_app_installation_id  (target)
+ventures.github_app_installation_id  (new — per venture)
   + GITHUB_APP_ID secret (Cloudflare Worker secret)
   + GITHUB_APP_PRIVATE_KEY secret (Cloudflare Worker secret)
 ```
 
 One GitHub App per arxys deployment. Each venture org installs the app. The installation ID
 is stored per venture. The API exchanges app credentials for a short-lived installation token
-at request time (cached for the token's 1-hour lifetime).
+at request time (cached for 55 minutes per Worker isolate).
 
 ---
 
-## Steps
+## Status
 
-### 1. Create the GitHub App
+### ✅ Done
 
-In GitHub → Settings → Developer Settings → GitHub Apps → New GitHub App:
+- **Migration 0016** applied to remote D1:
+  - `ventures.github_app_installation_id TEXT` column added
+  - `venture_members.github_pat` made nullable (table recreated)
 
-- **Name**: arxys
-- **Homepage URL**: https://arxysapis.arxoft.com
-- **Webhook**: disabled (we don't need inbound events)
-- **Permissions (Repository)**:
-  - Issues: Read & Write
-  - Pull requests: Read & Write
-  - Contents: Read (for repo info, commits)
-  - Metadata: Read (required)
-- **Permissions (Organization)**:
-  - Members: Read
-  - Projects: Read & Write
-- **Where can this app be installed**: Any account
+- **Code shipped** (commit `2fcf2c7`, deployed):
+  - `api/src/github/app-auth.ts` — JWT signing (WebCrypto RS256) + installation token exchange
+  - `api/src/middleware/auth.ts` — uses App token when `github_app_installation_id` + secrets present; falls back to member PAT
+  - `api/src/admin.ts` — `adminGithubCreds()` helper used in all 4 proxy routes (project-test, org-bootstrap, project-bootstrap, github-projects)
+  - `api/src/types.ts` — `github_app_installation_id` on venture; `github_pat` nullable; `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY` in Bindings
+  - Admin UI — "GitHub App installation ID" field on venture settings page
 
-After creation:
-- Note the **App ID**
-- Generate and download a **private key** (`.pem` file)
+- **GitHub App created** at github.com/settings/apps (personal account: `asif-maktg`):
+  - App name: `arxys`
+  - App ID: `5863196`
+  - Homepage: `https://arxysapis.arxoft.com`
+  - Webhook: disabled
+  - Permissions:
+    - Repository: Contents (R), Issues (R/W), Metadata (R), Pull requests (R/W)
+    - Organization: Members (R), Projects (R/W)
+  - Where installable: Any account
+  - Private key: downloaded (`.pem` file)
 
-### 2. Store secrets in Cloudflare
+- **`GITHUB_APP_ID` stored** as Cloudflare Worker secret ✅
 
-```bash
-wrangler secret put GITHUB_APP_ID         # numeric app ID
-wrangler secret put GITHUB_APP_PRIVATE_KEY  # full PEM contents, single line with \n
+### ⏳ Remaining
+
+1. **Store private key as Cloudflare secret**
+   ```bash
+   cd /home/asif/.arxys/api
+   # paste PEM contents when prompted (single line with \n, or multiline — both work)
+   CLOUDFLARE_API_TOKEN=$(grep CLOUDFLARE_API_TOKEN .env | cut -d= -f2) \
+     node_modules/.bin/wrangler secret put GITHUB_APP_PRIVATE_KEY
+   ```
+   Or if you have the .pem file path:
+   ```bash
+   cat /path/to/arxys.YYYY-MM-DD.private-key.pem | \
+     CLOUDFLARE_API_TOKEN=$(grep CLOUDFLARE_API_TOKEN .env | cut -d= -f2) \
+     node_modules/.bin/wrangler secret put GITHUB_APP_PRIVATE_KEY
+   ```
+
+2. **Install the App on each org/account** — visit:
+   ```
+   https://github.com/apps/arxys/installations/new
+   ```
+   Install on each venture's GitHub account:
+   - `mak-tg` org
+   - `arxoft` org
+   - `vaylour` org
+   - `dojo` org (or whatever the slug is)
+   - personal account `asif-maktg` if needed
+
+   After each install, find the installation ID in the URL:
+   ```
+   https://github.com/settings/installations/XXXXXXXXX
+                                              ^^^^^^^^^ this is the installation ID
+   ```
+
+3. **Set installation ID per venture** in the admin UI:
+   - Go to `arxysadmin.arxoft.com` → venture → Settings → "GitHub App installation ID"
+   - Paste the installation ID for that venture's org
+   - Repeat for each venture
+
+4. **Verify** each venture works:
+   - Click "Fetch Projects" on the venture page — should list projects from the org
+   - Click "🏗 Org bootstrap" — should provision issue types + fields
+   - Run test suite: `cd /home/asif/.arxys && bash api/test.sh`
+
+5. **Clean up member PATs** (optional, after all ventures are migrated):
+   - Remove PAT values from venture members via admin UI (edit member → blank PAT)
+   - Or leave them as silent fallback — they're nullable now and won't be used when App token is present
+
+6. **Final schema cleanup** (future migration, when all ventures confirmed working):
+   ```sql
+   ALTER TABLE venture_members DROP COLUMN github_pat;
+   ```
+
+---
+
+## How the token flow works (for reference)
+
 ```
-
-### 3. Install the app on each venture org
-
-Each venture org owner visits:
-```
-https://github.com/apps/arxys/installations/new
-```
-
-After installation, capture the **installation ID** from the URL:
-```
-https://github.com/settings/installations/12345678
-                                           ^^^^^^^^ this is the installation ID
-```
-
-### 4. Schema migration
-
-```sql
--- Add installation ID to ventures
-ALTER TABLE ventures ADD COLUMN github_app_installation_id TEXT;
-
--- Keep github_pat on venture_members during transition, nullable
--- Drop it in a later migration once all ventures are migrated
-```
-
-### 5. API changes
-
-Add `src/github/app-auth.ts`:
-
-```typescript
-// Exchange App credentials for a short-lived installation token
-// Cache the token for 55 minutes (tokens last 1 hour)
-const tokenCache = new Map<string, { token: string; expiresAt: number }>()
-
-export async function getInstallationToken(
-  installationId: string,
-  appId: string,
-  privateKeyPem: string
-): Promise<string> {
-  const cached = tokenCache.get(installationId)
-  if (cached && Date.now() < cached.expiresAt) return cached.token
-
-  const jwt = await signAppJwt(appId, privateKeyPem)
-  const res = await fetch(
-    `https://api.github.com/app/installations/${installationId}/access_tokens`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'arxys-api/1.0',
-      },
-    }
-  )
-  const data = await res.json() as { token: string; expires_at: string }
-  const expiresAt = Date.now() + 55 * 60 * 1000
-  tokenCache.set(installationId, { token: data.token, expiresAt })
-  return data.token
-}
-```
-
-In `src/middleware/auth.ts`, when building `credentials`:
-- If `venture.github_app_installation_id` is set → call `getInstallationToken()` and use as `githubToken`
-- If not → fall back to `ventureMember.github_pat` (transition period)
-
-This keeps the rest of the codebase unchanged — `c.get('credentials').githubToken` works as before.
-
-### 6. Admin UI changes
-
-- Venture detail page: add **GitHub App Installation ID** field (read/write)
-- Remove per-member GitHub PAT field once all ventures are migrated
-
-### 7. Cutover and cleanup
-
-Per venture:
-1. Set `github_app_installation_id` on the venture via admin UI
-2. Verify a few API calls work (list issues, update project field)
-3. Null out `venture_members.github_pat` for all members in that venture
-
-Once all ventures are migrated:
-```sql
--- Final cleanup migration
-ALTER TABLE venture_members DROP COLUMN github_pat;
-ALTER TABLE ventures DROP COLUMN ... (any PAT-related remnants)
+Request → authMiddleware
+  → if venture.github_app_installation_id set:
+      → signAppJwt(GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY)  [WebCrypto RS256]
+      → POST /app/installations/{id}/access_tokens
+      → cache token for 55 min
+      → credentials.githubToken = installation_token
+  → else:
+      → credentials.githubToken = ventureMember.github_pat  (fallback)
+  → all GitHub API calls use credentials.githubToken unchanged
 ```
 
 ---
 
-## Effort estimate
+## GitHub App URL
 
-| Task | Effort |
-|------|--------|
-| Create GitHub App + secrets | 1h |
-| `app-auth.ts` token exchange + JWT signing | 2h |
-| Auth middleware update (app token fallback) | 1h |
-| Admin UI: installation ID field | 1h |
-| Per-venture cutover + verification | 0.5h each |
-| Final schema cleanup migration | 0.5h |
-| **Total (excl. per-venture cutover)** | **~6h** |
+```
+https://github.com/apps/arxys
+```
+
+Installation management:
+```
+https://github.com/settings/installations
+```

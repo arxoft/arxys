@@ -361,7 +361,8 @@ githubProjectRoutes.post('/', async (c) => {
 //
 // Note: Priority and Effort are now org-level issue fields (set via
 // POST /github/org/bootstrap). This route handles project-specific fields only:
-// Status, Git Branch, Pull Request, Review round, Description, Due Date.
+// Status, Git Branch, Pull Request, Review round, Due Date.
+// (Description = issue body, no custom field.)
 // ---------------------------------------------------------------------------
 githubProjectRoutes.post('/bootstrap', async (c) => {
   const creds   = c.get('credentials')
@@ -459,7 +460,6 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
   await addField('Git Branch',    'TEXT')
   await addField('Pull Request',  'TEXT')
   await addField('Review round',  'NUMBER')
-  await addField('Description',   'TEXT')
 
   // Persist the project ID to the workspace
   await c.env.DB

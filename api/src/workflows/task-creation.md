@@ -37,11 +37,11 @@ POST /v1/task
 }
 ```
 
-Or update it after creation:
+Or update it after creation by editing the issue body:
 
 ```http
-PATCH /v1/task/:ref
-{ "field": "Description", "value": "What: ...\nWhy: ...\nAcceptance Criteria:\n- ..." }
+PATCH /v1/github/issue/:number
+{ "body": "What: ...\nWhy: ...\nAcceptance Criteria:\n- ..." }
 ```
 
 **Example:**

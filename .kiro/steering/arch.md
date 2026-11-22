@@ -84,7 +84,7 @@ Planned evolution → 4 levels: `Venture → Client → Project → Workspace` (
 - **Issue Fields** (org-wide): Deploy Flags (has-migration / has-env-change) — via org issue fields API
 
 `POST /v1/github/project/bootstrap` provisions per-project fields only:
-- Status, Git Branch, Pull Request, Review round, Description, Due Date
+- Status, Git Branch, Pull Request, Review round, Due Date (Description = issue body, no custom field)
 
 Priority and Effort are GitHub's default org issue fields — no provisioning needed.
 
