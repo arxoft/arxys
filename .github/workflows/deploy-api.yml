@@ -42,12 +42,3 @@ jobs:
           }' > "$RUNNER_TEMP/secrets.json"
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
-
-      - name: Run test suite
-        working-directory: api
-        env:
-          ARXYS_API_KEY:   ${{ secrets.ARXYS_API_KEY }}
-          ARXYS_WORKSPACE: ${{ secrets.ARXYS_WORKSPACE }}
-        run: |
-          sleep 5
-          bash test.sh

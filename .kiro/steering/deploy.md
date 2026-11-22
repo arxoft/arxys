@@ -19,9 +19,9 @@ Manual trigger is available on both via `workflow_dispatch` in GitHub Actions.
 
 ## Deployment Rules
 
-1. **Always run the test suite after every deployment.** Both `deploy-api.yml` and `deploy-admin.yml` run `bash test.sh` as the final step. If tests fail, the deploy is broken — fix immediately before merging anything else.
+1. **The test suite is manual and local — it is not part of CI.** `api/test.sh` exists so the owner can confirm API endpoints have not drifted. After a deploy, run it from your local terminal in a workspace directory that has its own `.env.arxys` (`ARXYS_API_KEY` + `ARXYS_WORKSPACE`). Those credentials are per-workspace and never go in GitHub secrets or the repo. Agents run it the same way, locally, after every deployment. If tests fail, the deploy is broken — fix immediately before merging anything else.
 
-2. **Always add or update tests when making API changes.** Any new route, changed behaviour, or new bootstrap step must have a corresponding test in `api/test.sh`. Tests run against the live deployed API (`https://arxysapis.arxoft.com`) using `ARXYS_API_KEY` + `ARXYS_WORKSPACE` from GitHub secrets.
+2. **Always add or update tests when making API changes.** Any new route, changed behaviour, or new bootstrap step must have a corresponding test in `api/test.sh`. Tests run against the live deployed API (`https://arxysapis.arxoft.com`).
 
 3. **Required GitHub repo secrets for CI:**
 
@@ -30,8 +30,6 @@ Manual trigger is available on both via `workflow_dispatch` in GitHub Actions.
 | `CLOUDFLARE_API_TOKEN` | Wrangler deploys |
 | `RESEND_API_KEY` | API Worker OTP email |
 | `RESEND_DOMAIN` | API Worker OTP sender |
-| `ARXYS_API_KEY` | Test suite auth |
-| `ARXYS_WORKSPACE` | Test suite workspace |
 
 ---
 
@@ -212,4 +210,5 @@ Before deploying any change:
 - [ ] Code builds locally without errors (`cd api && npx tsc --noEmit` or `cd admin && npm run build`)
 - [ ] Push to `main` — Actions handles the rest
 - [ ] After deploy: spot-check `GET https://arxysapis.arxoft.com/` returns expected schema
+- [ ] After deploy: run `bash api/test.sh` locally (needs `.env.arxys`; never CI)
 - [ ] If admin changed: load `https://arxysadmin.arxoft.com` and verify UI
