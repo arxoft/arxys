@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { githubGraphQL, githubGet, githubPost, resolveRepo } from './client'
 import { slackNotifyTaskStatus, slackNotifyTaskAssigned, slackNotifyComment } from '../slack/notify'
+import { ISSUE_FIELDS_API_VERSION } from './issue-fields'
 import type { AppEnv, Credentials } from '../types'
 
 export const githubProjectRoutes = new Hono<AppEnv>()
@@ -41,11 +42,11 @@ const ARXYS_ISSUE_TYPES = [
 const ARXYS_ISSUE_FIELDS = [
   {
     name:        'Deploy Flags',
-    data_type:   'single_select' as const,
+    data_type:   'multi_select' as const,   // both flags can apply to one issue
     description: 'Deployment notes attached to this issue',
     options: [
-      { value: 'has-migration',  color: 'RED',    description: 'Ships a DB schema change — run migration before/after deploy' },
-      { value: 'has-env-change', color: 'YELLOW', description: 'Requires .env updates on the server before deploying' },
+      { name: 'has-migration',  color: 'red',    description: 'Ships a DB schema change — run migration before/after deploy' },
+      { name: 'has-env-change', color: 'yellow', description: 'Requires .env updates on the server before deploying' },
     ],
   },
 ]
@@ -235,19 +236,19 @@ export async function runOrgBootstrap(org: string, creds: Credentials): Promise<
   const fieldsManual:  string[] = []
 
   let existingFields: Array<{ name: string }> = []
-  try { existingFields = await githubGet(issueFieldsBase, creds) as Array<{ name: string }> } catch { /* not available */ }
+  try { existingFields = await githubGet(issueFieldsBase, creds, ISSUE_FIELDS_API_VERSION) as Array<{ name: string }> } catch { /* not available */ }
 
   for (const field of ARXYS_ISSUE_FIELDS) {
     if (existingFields.some((e) => e.name.toLowerCase() === field.name.toLowerCase())) {
       fieldsSkipped.push(field.name); continue
     }
-    if (existingFields.length === 0 && fieldsManual.length === 0) {
-      fieldsManual.push(field.name); continue
-    }
     try {
-      await githubPost(issueFieldsBase, creds, { name: field.name, data_type: field.data_type, description: field.description, options: field.options })
+      await githubPost(issueFieldsBase, creds, {
+        name: field.name, data_type: field.data_type, description: field.description, visibility: 'all',
+        options: field.options.map((o, i) => ({ ...o, priority: i + 1 })),
+      }, ISSUE_FIELDS_API_VERSION)
       fieldsCreated.push(field.name)
-    } catch { fieldsManual.push(field.name) }
+    } catch (e) { fieldsManual.push(`${field.name} (${(e as Error).message})`) }
   }
 
   return {

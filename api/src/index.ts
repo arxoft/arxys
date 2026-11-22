@@ -93,7 +93,7 @@ app.get('/', (c) => c.json({
       routes: [
         'GET    /v1/task/list                                             → list tasks (?mine=1 ?icebox=1 ?status=X)',
         'GET    /v1/task/:ref                                             → task + comments (:ref = issue number or Notion No.)',
-        'POST   /v1/task              { title, body_text?, assignee? }   → create task',
+        'POST   /v1/task              { title, body_text?, assignee? }   → create task (GHP: also added to the project board)',
         'PATCH  /v1/task/:ref         { field, value }                   → update field (Status, Priority, etc.)',
         'PATCH  /v1/task/:ref/assign  { assignees: [] }                  → assign (logins for GHP, emails for Notion)',
         'PATCH  /v1/task/:ref/unassign { assignees: [] }                 → remove assignees',

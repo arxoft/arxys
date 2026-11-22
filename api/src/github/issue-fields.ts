@@ -12,7 +12,8 @@ import type { Credentials } from '../types'
 // issue's field values.
 // ---------------------------------------------------------------------------
 
-const API_VERSION = '2026-03-10'
+export const ISSUE_FIELDS_API_VERSION = '2026-03-10'
+const API_VERSION = ISSUE_FIELDS_API_VERSION
 
 export type IssueField = {
   id: number

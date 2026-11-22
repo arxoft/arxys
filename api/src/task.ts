@@ -258,6 +258,7 @@ taskRoutes.get('/:ref', async (c) => {
 // ---------------------------------------------------------------------------
 // POST /v1/task
 // Body: { title: string, body_text?: string (GHP), assignee?: string (GHP login) }
+// GHP: the issue is also added to the workspace's project board (response: in_project)
 // ---------------------------------------------------------------------------
 taskRoutes.post('/', async (c) => {
   const bt    = requireBoard(c)
@@ -272,8 +273,27 @@ taskRoutes.post('/', async (c) => {
     if (body.body_text) payload.body      = body.body_text
     if (body.assignee)  payload.assignees = [body.assignee]
     const result = await githubPost(`/repos/${repo}/issues`, creds, payload) as
-      { number: number; html_url: string }
-    return c.json({ ref: result.number, url: result.html_url, backend: 'github' }, 201)
+      { number: number; html_url: string; node_id: string }
+
+    // A task is an issue on the project board — add it there. If this fails the
+    // issue still exists, so report it loudly instead of failing the request.
+    let inProject = false
+    let warning: string | undefined
+    if (!creds.githubProjectId) {
+      warning = 'Workspace has no github_project_id — issue created but not added to a project'
+    } else {
+      try {
+        await githubGraphQL(
+          `mutation($projectId: ID!, $contentId: ID!) {
+            addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) { item { id } }
+          }`,
+          { projectId: creds.githubProjectId, contentId: result.node_id }, creds)
+        inProject = true
+      } catch (e) {
+        warning = `Issue created but could not be added to the project: ${(e as Error).message}`
+      }
+    }
+    return c.json({ ref: result.number, url: result.html_url, backend: 'github', in_project: inProject, ...(warning ? { warning } : {}) }, 201)
   }
 
   const result = await notionPost('/pages', creds, {
