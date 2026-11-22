@@ -9,14 +9,15 @@ async function githubRequest(
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   creds: Credentials,
-  body?: unknown
+  body?: unknown,
+  apiVersion = '2022-11-28'
 ): Promise<unknown> {
   const res = await fetch(`${GITHUB_BASE}${path}`, {
     method,
     headers: {
       'Authorization': `Bearer ${creds.githubToken}`,
       'Accept':        'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
+      'X-GitHub-Api-Version': apiVersion,
       'Content-Type':  'application/json',
       'User-Agent':    'arxys-api/1.0',
     },
@@ -36,11 +37,11 @@ async function githubRequest(
   return data
 }
 
-export const githubGet    = (path: string, creds: Credentials) =>
-  githubRequest('GET',    path, creds)
+export const githubGet    = (path: string, creds: Credentials, apiVersion?: string) =>
+  githubRequest('GET',    path, creds, undefined, apiVersion)
 
-export const githubPost   = (path: string, creds: Credentials, body: unknown) =>
-  githubRequest('POST',   path, creds, body)
+export const githubPost   = (path: string, creds: Credentials, body: unknown, apiVersion?: string) =>
+  githubRequest('POST',   path, creds, body, apiVersion)
 
 export const githubPatch  = (path: string, creds: Credentials, body: unknown) =>
   githubRequest('PATCH',  path, creds, body)

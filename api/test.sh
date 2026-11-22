@@ -98,7 +98,6 @@ ITEM_ID=""
 ISSUE_NO=""
 FIELDS=""
 STATUS_FIELD=""
-EFFORT_FIELD=""
 ITEM_STATUS=""
 
 if [[ -n "$PROJECT_ID" ]]; then
@@ -115,11 +114,6 @@ print(issues[0]['number'] if issues else '')
   STATUS_FIELD=$(echo "$FIELDS" | python3 -c "
 import sys,json; d=json.load(sys.stdin)
 f=next((x for x in d.get('fields',[]) if x.get('name')=='Status'),None)
-print(f['id'] if f else '')
-" 2>/dev/null)
-  EFFORT_FIELD=$(echo "$FIELDS" | python3 -c "
-import sys,json; d=json.load(sys.stdin)
-f=next((x for x in d.get('fields',[]) if x.get('name')=='Effort'),None)
 print(f['id'] if f else '')
 " 2>/dev/null)
   ITEM_STATUS=$(echo "$ITEM_DATA" | python3 -c "
@@ -218,20 +212,6 @@ section "GITHUB PROJECT — write"
 if [[ -z "$ITEM_ID" || -z "$STATUS_FIELD" ]]; then
   skip "all project write tests" "no project item available"
 else
-  PRIORITY_FIELD=$(echo "$FIELDS" | python3 -c "
-import sys,json; d=json.load(sys.stdin)
-f=next((x for x in d.get('fields',[]) if x.get('name')=='Priority'),None)
-print(f['id'] if f else '')
-" 2>/dev/null)
-
-  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
-    -d "{\"field_id\":\"$EFFORT_FIELD\",\"value\":\"5\"}")
-  check "PATCH Effort = 5 (number)" "$R" '"ok":true'
-
-  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
-    -d "{\"field_id\":\"$PRIORITY_FIELD\",\"value\":\"Medium\"}")
-  check "PATCH Priority = Medium (select)" "$R" '"ok":true'
-
   if [[ -n "$ITEM_STATUS" ]]; then
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues/$ITEM_ID" \
       -d "{\"field_id\":\"$STATUS_FIELD\",\"value\":\"$ITEM_STATUS\"}")
@@ -270,6 +250,19 @@ if [[ -n "$ISSUE_NO" ]]; then
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
     -d '{"field":"Effort","value":"5"}')
   check "task PATCH Effort" "$R" '"ok":true'
+
+  # Priority/Effort are org-level issue fields (not project fields)
+  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
+    -d '{"field":"Priority","value":"Medium"}')
+  check "task PATCH Priority (issue field)" "$R" '"ok":true'
+
+  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
+    -d '{"field":"Priority","value":"NotAPriority"}')
+  check "task PATCH Priority invalid → rejected" "$R" 'Unknown value'
+
+  R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
+    -d '{"field":"Effort","value":"abc"}')
+  check "task PATCH Effort non-numeric → rejected" "$R" 'is not a number'
 
   if [[ -n "$ME" ]]; then
     R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO/assign" \

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { githubGet, githubPost, githubGraphQL, resolveRepo } from './github/client'
+import { findIssueField, coerceIssueFieldValue, setIssueFieldValue } from './github/issue-fields'
 import { notionGet, notionPost, notionPatch, resolveNotionUserId } from './notion/client'
 import { slackNotifyTaskStatus, slackNotifyTaskAssigned } from './slack/notify'
 import type { AppEnv, Credentials } from './types'
@@ -283,7 +284,7 @@ taskRoutes.post('/', async (c) => {
 // ---------------------------------------------------------------------------
 // PATCH /v1/task/:ref
 // Body: { field: string, value: string }
-// GHP:    field is the project field name (e.g. "Status", "Priority")
+// GHP:    field is an org issue field (e.g. "Priority", "Effort") or a project field (e.g. "Status")
 // Notion: field is the property name
 // ---------------------------------------------------------------------------
 taskRoutes.patch('/:ref', async (c) => {
@@ -298,6 +299,19 @@ taskRoutes.patch('/:ref', async (c) => {
     const projectId = creds.githubProjectId!
     const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
+
+    // Org-level issue fields (Priority, Effort, ...) live on the issue, not the
+    // project — try them first. The issue's own repo owner defines the fields.
+    const repoMatch = item.url.match(/github\.com\/(.+?)\/issues\//)
+    const issueRepo = repoMatch ? repoMatch[1] : resolveRepo(undefined, ws.github_repo)
+    const issueField = await findIssueField(issueRepo.split('/')[0], body.field, creds)
+    if (issueField) {
+      let value: string | number | string[]
+      try { value = coerceIssueFieldValue(issueField, String(body.value)) }
+      catch (e) { return c.json({ error: (e as Error).message }, 400) }
+      await setIssueFieldValue(issueRepo, ref, issueField, value, creds)
+      return c.json({ ok: true, ref, field: issueField.name, value: body.value, backend: 'github', source: 'issue-field' })
+    }
 
     // Fetch all fields to find the right one by name
     const fieldData = await githubGraphQL<{
