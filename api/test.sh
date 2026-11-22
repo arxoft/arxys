@@ -257,6 +257,21 @@ if [[ -n "$ISSUE_NO" ]]; then
 
   check "task/:ref GET exposes issue_fields" "$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO")" '"issue_fields"'
 
+  # Transfer route validates input before touching GitHub
+  R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/issue/$ISSUE_NO/transfer" -d '{}')
+  check "issue transfer requires to_repo" "$R" 'to_repo is required'
+
+
+  # One tracking repo per project: adding another repo's issue is rejected (before any GitHub call)
+  R=$(req -X POST "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/github/project/$PROJECT_ID/issues" \
+    -d '{"repo":"arxys-test-org/not-the-tracking-repo","issue_number":1}')
+  check "project add from non-tracking repo → rejected" "$R" 'tracking repo'
+
+  # ?repo= narrows the lookup; a repo that has no such task → not found
+  R=$(req "${AUTH[@]}" "$BASE/v1/task/$ISSUE_NO?repo=arxys-test-org/not-the-tracking-repo")
+  check "task/:ref ?repo= filter (no match → not found)" "$R" 'not found in project'
+
+
   # Priority/Effort are org-level issue fields (not project fields)
   R=$(req -X PATCH "${AUTH[@]}" "${JSON[@]}" "$BASE/v1/task/$ISSUE_NO" \
     -d '{"field":"Priority","value":"Medium"}')

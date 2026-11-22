@@ -50,10 +50,20 @@ function requireBoard(c: import('hono').Context<AppEnv>): 'github' | 'notion' {
 // GHP helpers
 // ---------------------------------------------------------------------------
 
+// Thrown when an issue number matches tasks in more than one repo on the board.
+export class AmbiguousTaskRefError extends Error {
+  status = 409
+}
+
+// Resolve a task ref (GitHub issue number) to its project item.
+// Issue numbers are only unique per repo, so this scans the whole board and
+// refuses to guess: if several repos have that number, it throws a 409 listing
+// them unless `repo` (owner/repo) is given to disambiguate.
 async function ghpResolveItemByIssueNumber(
   issueNumber: number,
   projectId: string,
-  creds: Credentials
+  creds: Credentials,
+  repo?: string
 ): Promise<{ itemId: string; title: string; url: string } | null> {
   type PageResult = {
     node: {
@@ -66,6 +76,7 @@ async function ghpResolveItemByIssueNumber(
       }
     }
   }
+  const matches: Array<{ itemId: string; title: string; url: string; repo: string }> = []
   let cursor: string | null = null
   do {
     const data: PageResult = await githubGraphQL<PageResult>(
@@ -89,15 +100,22 @@ async function ghpResolveItemByIssueNumber(
       creds
     )
     const page = data.node.items
-    const match = page.nodes.find(
-      (n) => n.content?.__typename === 'Issue' && n.content.number === issueNumber
-    )
-    if (match && match.content) {
-      return { itemId: match.id, title: match.content.title, url: match.content.url }
+    for (const n of page.nodes) {
+      if (n.content?.__typename !== 'Issue' || n.content.number !== issueNumber) continue
+      const itemRepo = n.content.url.match(/github\.com\/(.+?)\/issues\//)?.[1] ?? ''
+      if (repo && itemRepo.toLowerCase() !== repo.toLowerCase()) continue
+      matches.push({ itemId: n.id, title: n.content.title, url: n.content.url, repo: itemRepo })
     }
     cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
   } while (cursor)
-  return null
+
+  if (matches.length > 1) {
+    throw new AmbiguousTaskRefError(
+      `Task #${issueNumber} is ambiguous — it exists in ${matches.map((m) => m.repo).join(', ')}. ` +
+      `Pass ?repo=owner/repo to choose one.`
+    )
+  }
+  return matches[0] ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +250,7 @@ taskRoutes.get('/:ref', async (c) => {
   if (bt === 'github') {
     // Resolve the issue's actual repo via the project — handles cross-repo projects
     const projectId = creds.githubProjectId!
-    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
+    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds, c.req.query('repo'))
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
 
     // Extract repo from the issue URL: https://github.com/owner/repo/issues/N
@@ -319,7 +337,7 @@ taskRoutes.patch('/:ref', async (c) => {
 
   if (bt === 'github') {
     const projectId = creds.githubProjectId!
-    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
+    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds, c.req.query('repo'))
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
 
     // Org-level issue fields (Priority, Effort, ...) live on the issue, not the
@@ -510,7 +528,7 @@ taskRoutes.patch('/:ref/assign', async (c) => {
 
   if (bt === 'github') {
     const projectId = creds.githubProjectId!
-    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
+    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds, c.req.query('repo'))
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
     const repoMatch = item.url.match(/github\.com\/(.+?)\/issues\//)
     const repo = repoMatch ? repoMatch[1] : resolveRepo(undefined, ws.github_repo)
@@ -563,7 +581,7 @@ taskRoutes.patch('/:ref/unassign', async (c) => {
 
   if (bt === 'github') {
     const projectId = creds.githubProjectId!
-    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
+    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds, c.req.query('repo'))
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
     const repoMatch = item.url.match(/github\.com\/(.+?)\/issues\//)
     const repo = repoMatch ? repoMatch[1] : resolveRepo(undefined, ws.github_repo)
@@ -614,7 +632,7 @@ taskRoutes.post('/:ref/comment', async (c) => {
 
   if (bt === 'github') {
     const projectId = creds.githubProjectId!
-    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds)
+    const item = await ghpResolveItemByIssueNumber(ref, projectId, creds, c.req.query('repo'))
     if (!item) return c.json({ error: `Issue #${ref} not found in project` }, 404)
     const repoMatch = item.url.match(/github\.com\/(.+?)\/issues\//)
     const repo = repoMatch ? repoMatch[1] : resolveRepo(undefined, ws.github_repo)

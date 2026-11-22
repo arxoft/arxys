@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { githubGet, githubPost, githubPatch, resolveRepo } from './client'
+import { githubGet, githubPost, githubPatch, githubGraphQL, resolveRepo } from './client'
+import { adminOnly } from '../middleware/auth'
 import type { AppEnv } from '../types'
 
 export const githubIssueRoutes = new Hono<AppEnv>()
@@ -96,4 +97,42 @@ githubIssueRoutes.post('/:number/comment', async (c) => {
   ) as { id: number }
 
   return c.json({ ok: true, id: result.id }, 201)
+})
+
+// POST /github/issue/:number/transfer?repo=owner/repo   (admin only)
+// Body: { to_repo: "owner/repo" }
+// Moves an issue to another repo (GitHub GraphQL transferIssue — no REST equivalent).
+// The issue gets a NEW number in the target repo; comments, assignees and
+// same-named labels move with it, and the old URL redirects. Used to keep every
+// task in the workspace's tracking repo so task numbers stay unique.
+githubIssueRoutes.post('/:number/transfer', adminOnly, async (c) => {
+  const creds  = c.get('credentials')
+  const ws     = c.get('workspace')
+  const from   = resolveRepo(c.req.query('repo'), ws.github_repo)
+  const number = c.req.param('number')
+  const body   = await c.req.json<{ to_repo?: string }>().catch(() => ({} as { to_repo?: string }))
+
+  if (!body.to_repo) return c.json({ error: 'to_repo is required (owner/repo)' }, 400)
+  if (body.to_repo.toLowerCase() === from.toLowerCase()) {
+    return c.json({ error: `Issue is already in '${from}'` }, 400)
+  }
+
+  const [issue, target] = await Promise.all([
+    githubGet(`/repos/${from}/issues/${number}`, creds) as Promise<{ node_id: string; pull_request?: unknown }>,
+    githubGet(`/repos/${body.to_repo}`, creds)          as Promise<{ node_id: string }>,
+  ])
+  if (issue.pull_request) return c.json({ error: 'Pull requests cannot be transferred' }, 400)
+
+  const data = await githubGraphQL<{ transferIssue: { issue: { number: number; url: string } } }>(
+    `mutation($issueId: ID!, $repoId: ID!) {
+      transferIssue(input: { issueId: $issueId, repositoryId: $repoId, createLabelsIfMissing: true }) {
+        issue { number url }
+      }
+    }`,
+    { issueId: issue.node_id, repoId: target.node_id },
+    creds
+  )
+
+  const moved = data.transferIssue.issue
+  return c.json({ ok: true, from: `${from}#${number}`, to: `${body.to_repo}#${moved.number}`, url: moved.url })
 })

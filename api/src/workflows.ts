@@ -75,6 +75,7 @@ const RULES_CONTENT = `# arxys Task Rules
 | **Status change** | Always post a comment explaining *why* before changing Status. The API auto-posts an audit comment too — yours is the reasoning one. |
 | **Effort** | Low · Medium · High (GitHub default Effort field). Set on every task. If a task feels bigger than High, consider splitting it. |
 | **Labels** | Use GitHub labels. Standard labels are created by \`POST /v1/github/project/bootstrap\`. Add them to issues via \`PATCH /v1/github/issue/:number { "labels": ["has-migration"] }\`. |
+| **Task repo** | Tasks (issues) live only in the workspace's tracking repo (\`github_repo\`), so task numbers are unique. Code repos link their PRs with \`Closes <tracking-repo>#<number>\`. If a number ever exists in several repos, task routes return 409 — pass \`?repo=owner/repo\`. |
 | **Git Branch** | Set on the task after creating the branch: \`PATCH /v1/task/:ref { "field": "Git Branch", "value": "..." }\`. |
 | **Pull Request** | Set on the task after opening the PR: \`PATCH /v1/task/:ref { "field": "Pull Request", "value": "https://github.com/..." }\`. |
 | **Review round** | Incremented by the reviewer before sending a task back. \`PATCH /v1/task/:ref { "field": "Review round", "value": "2" }\`. |
@@ -318,9 +319,11 @@ POST /v1/github/pr
 {
   "title": "Concise title under 70 chars",
   "head": "<branch-name>",
-  "body_text": "Closes #<issue-number>.\\n\\n<description>"
+  "body_text": "Closes <tracking-repo>#<issue-number>.\\n\\n<description>"
 }
 \`\`\`
+
+Use the full form \`Closes <owner>/<tracking-repo>#<issue-number>\` — the task lives in the workspace tracking repo, which is often not the repo the PR is in. A bare \`Closes #N\` in another repo would link to the wrong issue.
 
 Post PR URL on the task:
 

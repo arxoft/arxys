@@ -650,6 +650,16 @@ githubProjectRoutes.post('/:projectId/issues', async (c) => {
   }
 
   const repo  = resolveRepo(body.repo, ws.github_repo)
+
+  // One tracking repo per project: task numbers (issue numbers) must be unique,
+  // and they are only unique within a repo. Code repos link via 'Closes <repo>#N'.
+  if (projectId === creds.githubProjectId && repo.toLowerCase() !== ws.github_repo.toLowerCase()) {
+    return c.json({
+      error: `Tasks for this project must live in its tracking repo '${ws.github_repo}', not '${repo}'. ` +
+             `Create the issue there; PRs in other repos should say 'Closes ${ws.github_repo}#<number>'.`
+    }, 400)
+  }
+
   const issue = await githubGet(
     `/repos/${repo}/issues/${body.issue_number}`,
     creds

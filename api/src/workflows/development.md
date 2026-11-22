@@ -134,9 +134,11 @@ POST /v1/github/pr
 {
   "title": "Concise title under 70 chars",
   "head": "<branch-name>",
-  "body_text": "Closes #<issue-number>.\n\n<description>"
+  "body_text": "Closes <tracking-repo>#<issue-number>.\n\n<description>"
 }
 ```
+
+Use the full form `Closes <owner>/<tracking-repo>#<issue-number>` — the task lives in the workspace tracking repo, which is often not the repo the PR is in. A bare `Closes #N` in another repo would link to the wrong issue.
 
 Then post the PR URL as a comment on the task:
 

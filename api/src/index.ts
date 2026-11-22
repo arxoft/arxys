@@ -92,7 +92,7 @@ app.get('/', (c) => c.json({
       description: 'Unified task abstraction — dispatches to GHP or Notion based on workspace board_type',
       routes: [
         'GET    /v1/task/list                                             → list tasks (?mine=1 ?icebox=1 ?status=X)',
-        'GET    /v1/task/:ref                                             → task + comments (:ref = issue number or Notion No.)',
+        'GET    /v1/task/:ref                                             → task + comments (:ref = issue number or Notion No.; GHP: ?repo=owner/repo disambiguates a number that exists in several repos → otherwise 409)',
         'POST   /v1/task              { title, body_text?, assignee? }   → create task (GHP: also added to the project board)',
         'PATCH  /v1/task/:ref         { field, value }                   → update field (Status, Priority, etc.)',
         'PATCH  /v1/task/:ref/assign  { assignees: [] }                  → assign (logins for GHP, emails for Notion)',
@@ -166,6 +166,7 @@ app.get('/', (c) => c.json({
         'POST /v1/github/issue            { repo, title, body_text? }     → create issue',
         'PATCH /v1/github/issue/:number   { state?, title?, ... }         → update issue',
         'POST /v1/github/issue/:number/comment { text }                   → add comment',
+        'POST /v1/github/issue/:number/transfer?repo=owner/repo { to_repo } → move issue to another repo (admin only; gets a new number)',
       ],
     },
 
@@ -182,7 +183,7 @@ app.get('/', (c) => c.json({
         'GET  /v1/github/project/:id/issues?mine=1                                           → your issues',
         'GET  /v1/github/project/:id/issues?icebox=1                                         → include Icebox issues',
         'GET  /v1/github/project/:id/issues?field=Priority&value=High                        → filter by any project field value',
-        'POST /v1/github/project/:id/issues   { repo, issue_number }                        → add issue to project',
+        'POST /v1/github/project/:id/issues   { repo?, issue_number }                       → add issue to project (repo must be the workspace tracking repo)',
         'PATCH /v1/github/project/:id/issues/:itemId { field_id, value }                    → update field; Status change posts audit comment + Slack',
         'PATCH /v1/github/project/:id/issues/:itemId/assign   { assignees: [] }             → assign users by login, fires Slack per assignee',
         'PATCH /v1/github/project/:id/issues/:itemId/unassign { assignees: [] }             → remove assignees',
@@ -260,7 +261,7 @@ app.notFound((c) => c.json({ error: 'Not found' }, 404))
 app.onError((err, c) => {
   console.error(err)
   const status = (err as Error & { status?: number }).status
-  if (status === 400 || status === 403 || status === 404) {
+  if (status === 400 || status === 403 || status === 404 || status === 409) {
     return c.json({ error: err.message }, status)
   }
   return c.json({ error: err.message ?? 'Internal server error' }, 500)

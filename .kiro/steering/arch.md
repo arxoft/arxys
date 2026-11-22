@@ -53,6 +53,8 @@ Venture  (arxoft, alqada, sensei …)
   └── Workspace  (git repo anchor — one per repo)
 ```
 
+**Task numbering:** a task is a GitHub issue, and its number (`:ref`) is only unique within a repo. So each workspace's `github_repo` is the project's tracking repo — tasks live only there (enforced when adding to the project), and PRs in other repos use `Closes <owner>/<tracking-repo>#N`. Task lookups scan the whole board and return 409 if a number matches in several repos (`?repo=owner/repo` disambiguates).
+
 Planned evolution → 4 levels: `Venture → Client → Project → Workspace` (see `api/upcoming.md`).
 
 ### Core tables
