@@ -30,8 +30,12 @@ export async function listIssueFields(owner: string, creds: Credentials): Promis
   let fields: IssueField[] = []
   try {
     fields = await githubGet(`/orgs/${owner}/issue-fields`, creds, API_VERSION) as IssueField[]
-  } catch {
-    // Personal account or issue fields unavailable — no issue fields.
+  } catch (e) {
+    // 404 = personal account / issue fields not enabled → no issue fields.
+    // Anything else (permissions, API version) must surface, not hide.
+    if ((e as Error).message !== 'Not Found') {
+      throw new Error(`Could not read issue fields for '${owner}': ${(e as Error).message}`)
+    }
   }
   cache.set(owner, { fields, expiresAt: Date.now() + 5 * 60 * 1000 })
   return fields
