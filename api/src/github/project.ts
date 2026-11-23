@@ -9,19 +9,22 @@ export const githubProjectRoutes = new Hono<AppEnv>()
 // ---------------------------------------------------------------------------
 // Standard arxys status options — mirrors Notion's status field
 // ---------------------------------------------------------------------------
-export const ARXYS_STATUSES = [
-  'Planning',
-  'Backlog',
-  'Up Next',
-  'In Progress',
-  'Pending Review',
-  'Awaiting Deployment',
-  'Testing',
-  'Pending Acceptance',
-  'Completed',
-  'Cancelled',
-  'Icebox',
+// Status options for the project board, in workflow order. GitHub's API cannot create
+// options on the built-in Status field, so these are created by hand — names must match exactly.
+export const ARXYS_STATUS_OPTIONS = [
+  { name: 'Planning', description: 'Being shaped: acceptance criteria, sizing, splitting. Not ready to start.' },
+  { name: 'Backlog', description: 'Shaped and ready to be pulled when capacity allows.' },
+  { name: 'Up Next', description: 'This is ready to be picked up' },
+  { name: 'In Progress', description: 'This is actively being worked on' },
+  { name: 'Pending Review', description: 'This item is in review' },
+  { name: 'Awaiting Deployment', description: 'Review passed. Waiting to be deployed to production.' },
+  { name: 'Testing', description: 'Deployed. Being verified against the acceptance criteria.' },
+  { name: 'Pending Acceptance', description: 'Testing passed. Waiting for stakeholder sign-off.' },
+  { name: 'Completed', description: 'This has been completed' },
+  { name: 'Cancelled', description: "Won't be done. Dropped or no longer needed." },
+  { name: 'Icebox', description: 'Parked. Hidden from task lists unless asked for by name.' },
 ]
+export const ARXYS_STATUSES = ARXYS_STATUS_OPTIONS.map((s) => s.name)
 
 // ---------------------------------------------------------------------------
 // Standard arxys issue types (org-level)
@@ -502,7 +505,7 @@ githubProjectRoutes.post('/bootstrap', async (c) => {
     skipped:     [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
     manual_steps: {
       status_field: 'GitHub does not allow API access to the built-in Status field. Add these options manually in the project settings:',
-      options: ARXYS_STATUSES,
+      options: ARXYS_STATUS_OPTIONS,
       org_bootstrap: 'Run POST /github/org/bootstrap first to provision org-level issue types and issue fields (Priority, Effort, Deploy Flags).',
     },
   }, 201)

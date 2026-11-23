@@ -42,3 +42,41 @@ jobs:
           }' > "$RUNNER_TEMP/secrets.json"
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
+
+      # API-only deploys have left arxysapis.arxoft.com serving the admin SPA a few
+      # seconds after the deploy finishes (see deploy.md "Route displacement").
+      # Verify the route is really serving the API; if not, redeploy to re-register it.
+      - name: Re-assert API route
+        working-directory: api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY:            ${{ secrets.RESEND_API_KEY }}
+          RESEND_DOMAIN:             ${{ secrets.RESEND_DOMAIN }}
+          GITHUB_APP_ID:             ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY:    ${{ secrets.GH_APP_PRIVATE_KEY }}
+        run: |
+          probe() { curl -fsS -m 15 https://arxysapis.arxoft.com/ 2>/dev/null | grep -q '"service":"arxys-api"'; }
+          redeploy() {
+            jq -n '{
+              RESEND_API_KEY:         env.RESEND_API_KEY,
+              RESEND_DOMAIN:          env.RESEND_DOMAIN,
+              GH_APP_ID:              env.GITHUB_APP_ID,
+              GH_APP_PRIVATE_KEY:     env.GITHUB_APP_PRIVATE_KEY
+            }' > "$RUNNER_TEMP/secrets.json"
+            npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
+            rm -f "$RUNNER_TEMP/secrets.json"
+          }
+
+          sleep 30   # the displacement shows up ~10s after deploy — wait it out
+          for attempt in 1 2 3; do
+            if probe; then
+              sleep 15   # still serving after a second look?
+              if probe; then echo "API route OK"; exit 0; fi
+            fi
+            echo "::warning::API route is not serving the API (attempt $attempt) — redeploying to re-assert it"
+            redeploy
+            sleep 30
+          done
+          if probe; then echo "API route OK"; exit 0; fi
+          echo "::error::arxysapis.arxoft.com is still not serving the API. Run the 'Deploy Admin' workflow (it re-asserts the API route) or see deploy.md."
+          exit 1

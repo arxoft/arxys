@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { githubGraphQL } from './github/client'
-import { runOrgBootstrap, ARXYS_STATUSES } from './github/project'
+import { runOrgBootstrap, ARXYS_STATUS_OPTIONS } from './github/project'
 import { getInstallationToken } from './github/app-auth'
 import type { AppEnv, Credentials } from './types'
 
@@ -670,7 +670,7 @@ adminRoutes.post('/workspaces/:workspace_id/github-project-bootstrap', async (c)
     ok: true, project_id: data.node.id, number: data.node.number, url: data.node.url,
     provisioned,
     skipped: [...existingNames].filter((n) => !['Title', 'Assignees', 'Status'].includes(n)),
-    manual_steps: { status_field: 'Add Status options manually in project settings:', options: ARXYS_STATUSES },
+    manual_steps: { status_field: 'Add Status options manually in project settings:', options: ARXYS_STATUS_OPTIONS },
   })
 })
 

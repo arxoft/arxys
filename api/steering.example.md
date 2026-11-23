@@ -84,6 +84,8 @@ PATCH  /v1/task/:ref/unassign    { "assignees": ["login"] }
 POST   /v1/task/:ref/comment     { "text": "..." }
 ```
 
+`GET /v1/workspace/members` lists teammates with their `github_login` (use it to resolve assignee logins).
+
 `:ref` = GitHub issue number for GHP workspaces, Notion unique_id No. for Notion workspaces.
 
 Status changes automatically post an audit comment and fire Slack. `repo` is never required — defaults to workspace primary repo.
@@ -123,7 +125,7 @@ POST   /v1/github/pr/:number/review  { "action": "approve" }
 Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed
 ```
 
-Side states: **Icebox** (parked), **Cancelled** (terminal).
+Side states: **Icebox** (parked), **Cancelled** (terminal). What each status means: `GET /v1/rules`.
 
 ---
 

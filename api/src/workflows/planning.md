@@ -77,6 +77,8 @@ Pattern:
 <root-branch>_<No.>-short-name                ← standalone only
 ```
 
+`<No.>` is the task's issue number, zero-padded to 4 digits (#71 → `0071`). Example: issue #71 in milestone `auth` → `main_auth_0071-token-refresh`.
+
 ---
 
 ## 5. Move to Up Next
@@ -113,3 +115,5 @@ GET /v1/task/list?mine=1
 ## Status Flow
 
 `Planning → Backlog → Up Next`
+
+The full list of Status options and what each means is in the task rules: `GET /v1/rules`.

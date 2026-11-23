@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth'
 import { taskRoutes }          from './task'
+import { workspaceRoutes }     from './workspace'
 import { workflowRoutes, getRulesContent, getSteeringContent } from './workflows'
 import { notionTaskRoutes }    from './notion/task'
 import { notionCommentRoutes } from './notion/comment'
@@ -85,6 +86,13 @@ app.get('/', (c) => c.json({
         'POST /auth/otp/verify        { email, code }                    → returns session token',
         'POST /auth/logout            { token }                          → invalidates session',
         'GET  /auth/me                                                   → validate session + member info',
+      ],
+    },
+
+    workspace: {
+      description: 'Workspace directory — who can access the caller\'s workspace',
+      routes: [
+        'GET  /v1/workspace/members  → members with access to this workspace: { id, display_name, role, github_login, notion_user } (no emails/tokens; venture admins included)',
       ],
     },
 
@@ -174,7 +182,7 @@ app.get('/', (c) => c.json({
       routes: [
         'POST /v1/github/project/org/bootstrap                                                       → provision org-level issue types (Task/Bug/Feature/Hotfix/Epic) + issue fields (Deploy Flags). Run once per org, safe to re-run.',
         'GET  /v1/github/project/list                                                        → list projects for venture org',
-        'GET  /v1/github/project/members                                                     → list org members (equiv. to notion/user/list)',
+        'GET  /v1/github/project/members                                                     → list PUBLIC GitHub org members only; to map people to logins use GET /v1/workspace/members',
         'POST /v1/github/project              { title }                                      → create project under venture org',
         'POST /v1/github/project/bootstrap    { project_id? OR title }                      → provision project fields (Status, Git Branch, Pull Request, Review round, Due Date). Run org/bootstrap first.',
         'GET  /v1/github/project/:id/issues                                                  → list issues (Icebox hidden by default)',
@@ -238,6 +246,7 @@ const api = new Hono<AppEnv>()
 api.use('*', authMiddleware)
 
 api.route('/task',           taskRoutes)
+api.route('/workspace',      workspaceRoutes)
 api.route('/notion/task',    notionTaskRoutes)
 api.route('/notion/comment', notionCommentRoutes)
 api.route('/notion/user',    notionUserRoutes)

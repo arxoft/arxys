@@ -71,18 +71,18 @@ If `status: stale` — the base has moved. Note this. The review branch will be 
 Determine the review round from the task's `Review round` field. Construct the branch name:
 
 ```
-review/<task_ref>-r<review_round>-<slug>
+review/<No.>-r<review_round>-<slug>
 ```
 
-where `slug` is the task title in kebab-case, truncated to 40 characters.
+where `<No.>` is the task's issue number zero-padded to 4 digits (#123 → `0123`) and `slug` is the task title in kebab-case, truncated to 40 characters.
 
-Example: `review/123-r1-fix-login-redirect-on-oauth`
+Example: `review/0123-r1-fix-login-redirect-on-oauth`
 
 Cut the branch from the fetched remote target — never from a local ref:
 
 ```bash
 git fetch origin
-git switch -c review/<task_ref>-r<n>-<slug> origin/<target-branch>
+git switch -c review/<No.>-r<n>-<slug> origin/<target-branch>
 ```
 
 Record the base SHA:
@@ -137,7 +137,7 @@ Do not use `git reset --hard`. The review branch is disposable; the root branch 
 ```bash
 git merge --abort        # only if a merge is in progress
 git switch <root-branch>
-git branch -D review/<task_ref>-r<n>-<slug>
+git branch -D review/<No.>-r<n>-<slug>
 ```
 
 ---
@@ -185,7 +185,7 @@ The discarded review branch is not reused. The developer opens a new PR; the nex
 ```http
 POST /v1/github/pr
 {
-  "head": "review/<task_ref>-r<n>-<slug>",
+  "head": "review/<No.>-r<n>-<slug>",
   "base": "<target-branch>",
   "title": "<original title>",
   "body_text": "Base SHA at review start: <sha>",

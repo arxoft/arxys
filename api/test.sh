@@ -402,6 +402,7 @@ check "repo/commits" "$(req "${AUTH[@]}" "$BASE/v1/github/repo/commits")"       
 check "repo/search"  "$(req "${AUTH[@]}" "$BASE/v1/github/repo/search?q=github")"         '"total_count"'
 check "repo/list"    "$(req "${AUTH[@]}" "$BASE/v1/github/repo/list?org=${ME:-github}")"  '"full_name"\|\[\]'
 check "user/me"      "$(req "${AUTH[@]}" "$BASE/v1/github/user/me")"                      '"login"'
+check "workspace/members" "$(req "${AUTH[@]}" "$BASE/v1/workspace/members")"            '"github_login"'
 check "user/search"  "$(req "${AUTH[@]}" "$BASE/v1/github/user/search?q=github")"         '"items"'
 check "pr/list"      "$(req "${AUTH[@]}" "$BASE/v1/github/pr/list")"                      '"number"\|\[\]'
 check "issue/list"   "$(req "${AUTH[@]}" "$BASE/v1/github/issue/list")"                   '"number"\|\[\]'

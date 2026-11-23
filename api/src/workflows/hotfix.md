@@ -49,7 +49,7 @@ Hotfixes are cut directly from the root branch:
 ```bash
 git checkout <root-branch>
 git pull
-git checkout -b <root-branch>_<ref>-hotfix-short-description
+git checkout -b <root-branch>_<No.>-hotfix-short-description
 ```
 
 Confirm the branch name with the human first. Then set it on the task:

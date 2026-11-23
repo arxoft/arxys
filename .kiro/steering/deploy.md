@@ -112,12 +112,12 @@ Both workers have `workers_dev = false`. This is intentional — it disables the
 
 ## Known Issues and Past Incidents
 
-### Route displacement (ongoing — mitigated)
+### Route displacement (ongoing — detected and re-asserted by CI)
 
 **Symptom:** Admin or API stops responding with CORS errors or 404s immediately after a deploy.  
-**Cause:** Cloudflare Workers route registration is per-zone, not per-worker. Even with non-overlapping routes, when both workers deploy in parallel (same push triggers both workflows simultaneously), one `wrangler deploy` can displace the other's route registration on the zone.  
-**Mitigation:** `deploy-admin.yml` ends with a "Re-assert API route" step — after admin deploys, it immediately redeploys the API worker. This ensures the API route is always registered last and wins. If only API deploys (no admin changes), it runs alone with no race.  
-**Manual recovery:** If CORS/404 errors appear after a deploy, run `cd api && npx wrangler deploy` locally to restore the API route. Check with:
+**Cause:** not fully understood. Cloudflare Workers route registration is per-zone, not per-worker, and one worker's deploy can displace the other's. It has happened on parallel deploys *and* on API-only deploys: `arxysapis.arxoft.com` starts serving the admin SPA (root returns HTML, `/v1/*` returns 404), often ~10 seconds after the deploy finishes — so an immediate check can look healthy.  
+**Mitigation:** `deploy-admin.yml` ends with a "Re-assert API route" step — after admin deploys, it immediately redeploys the API worker. `deploy-api.yml` ends with its own "Re-assert API route" step: it waits 30s, checks that `https://arxysapis.arxoft.com/` really returns the API (`"service":"arxys-api"`), and if not, redeploys the API (up to 3 times) and fails the run if the route still isn't right. A red run on that step means the API is down — recover with the manual steps below.  
+**Manual recovery:** If CORS/404 errors appear after a deploy, run the **Deploy Admin** workflow (`workflow_dispatch`) — it deploys admin and then re-asserts the API — or run `cd api && npx wrangler deploy` locally. Check with:
 ```bash
 curl -sI -X OPTIONS https://arxysapis.arxoft.com/ \
   -H "Origin: https://arxysadmin.arxoft.com" \

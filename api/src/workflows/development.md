@@ -40,6 +40,8 @@ PATCH /v1/task/:ref/assign
 
 Branch naming: `<root-branch>_<milestone>_<No.>-short-task-name` or `<root-branch>_<No.>-short-task-name` for standalone tasks.
 
+`<No.>` is the task's issue number, zero-padded to 4 digits (#71 → `0071`). Example: issue #71 in milestone `auth` → `main_auth_0071-token-refresh`.
+
 Suggest a branch name. After human approves, create it locally:
 
 ```bash

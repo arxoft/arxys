@@ -9,11 +9,33 @@
 | **Effort** | Low · Medium · High (GitHub default Effort field). Set on every task. If a task feels bigger than High, consider splitting it. |
 | **Labels** | Use GitHub labels. Standard labels are created by `POST /v1/github/project/bootstrap`. Add them to issues via `PATCH /v1/github/issue/:number { "labels": ["has-migration"] }`. |
 | **Task repo** | Tasks (issues) live only in the workspace's tracking repo (`github_repo`), so task numbers are unique. Code repos link their PRs with `Closes <tracking-repo>#<number>`. If a number ever exists in several repos, task routes return 409 — pass `?repo=owner/repo`. |
+| **Assignee logins** | GitHub login of any teammate: `GET /v1/workspace/members` (`display_name`, `notion_user`, `github_login` for everyone with access to this workspace). Do not use `/v1/github/project/members` — it lists only public org members. A member must also be a collaborator on the tracking repo to be assignable. |
+| **Task number `<No.>`** | The task's GitHub issue number in the tracking repo, zero-padded to 4 digits: issue #71 → `0071`. Used in every branch name. API calls use the plain number (`/v1/task/71`). |
 | **Git Branch** | Set on the task after creating the branch: `PATCH /v1/task/:ref { "field": "Git Branch", "value": "..." }`. |
 | **Pull Request** | Set on the task after opening the PR: `PATCH /v1/task/:ref { "field": "Pull Request", "value": "https://github.com/..." }`. |
 | **Review round** | Incremented by the reviewer before sending a task back. `PATCH /v1/task/:ref { "field": "Review round", "value": "2" }`. |
 | **Icebox** | Parked work. Ignore unless a human names it explicitly. `GET /v1/task/list` excludes Icebox by default. |
 | **Priority** | Urgent · High · Medium · Low (GitHub default Priority field). Set by ako (CTO). Do not change without explicit instruction. If something feels wrong, comment on the task. |
+
+## Status Options
+
+These are the Status options on the project board (names must match exactly when you `PATCH` Status):
+
+| Status | Meaning |
+|---|---|
+| **Planning** | Being shaped: acceptance criteria, sizing, splitting. Not ready to start. |
+| **Backlog** | Shaped and ready to be pulled when capacity allows. |
+| **Up Next** | This is ready to be picked up |
+| **In Progress** | This is actively being worked on |
+| **Pending Review** | This item is in review |
+| **Awaiting Deployment** | Review passed. Waiting to be deployed to production. |
+| **Testing** | Deployed. Being verified against the acceptance criteria. |
+| **Pending Acceptance** | Testing passed. Waiting for stakeholder sign-off. |
+| **Completed** | This has been completed |
+| **Cancelled** | Won't be done. Dropped or no longer needed. |
+| **Icebox** | Parked. Hidden from task lists unless asked for by name. |
+
+Flow: Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed. Side states: Icebox (parked), Cancelled (terminal).
 
 ## Standard Labels
 
