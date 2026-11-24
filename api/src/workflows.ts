@@ -94,15 +94,16 @@ These are the Status options on the project board (names must match exactly when
 | **Backlog** | Shaped and ready to be pulled when capacity allows. |
 | **Up Next** | This is ready to be picked up |
 | **In Progress** | This is actively being worked on |
-| **Pending Review** | This item is in review |
-| **Awaiting Deployment** | Review passed. Waiting to be deployed to production. |
-| **Testing** | Deployed. Being verified against the acceptance criteria. |
+| **Testing** | Being verified against the acceptance criteria — peer, dev, stage or production. Labels say which. |
+| **Deploying** | Reviewed, merged and deployed in one pass. |
 | **Pending Acceptance** | Testing passed. Waiting for stakeholder sign-off. |
 | **Completed** | This has been completed |
 | **Cancelled** | Won't be done. Dropped or no longer needed. |
 | **Icebox** | Parked. Hidden from task lists unless asked for by name. |
 
-Flow: Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed. Side states: Icebox (parked), Cancelled (terminal).
+Flow: Planning → Backlog → Up Next → In Progress → Testing → Deploying → Testing → Pending Acceptance → Completed. Side states: Icebox (parked), Cancelled (terminal).
+
+Testing appears twice: before deploy (peer, dev or stage testing) and after deploy (production testing). Labels record which environments have passed: \`peer-tested\`, \`stage-tested\`, \`prod-tested\`. Review and deploy are one step — **Deploying**. A failed test sends the task back to Up Next.
 
 ## Standard Labels
 
@@ -118,6 +119,9 @@ Created automatically by \`POST /v1/github/project/bootstrap\`. Apply with \`PAT
 | \`issue-persists\` | Major issue found — sent back to developer |
 | \`hotfix\` | Fast-track critical production fix |
 | \`need-info\` | Blocked on missing information before work can start |
+| \`peer-tested\` | Passed peer testing (another tester or developer, usually on dev) |
+| \`stage-tested\` | Passed testing on stage |
+| \`prod-tested\` | Passed production testing |
 
 ## Git Rules
 
@@ -358,14 +362,14 @@ POST /v1/task/:ref/comment
 
 ---
 
-## 8. Move to Pending Review
+## 8. Move to Testing
 
 \`\`\`http
 POST /v1/task/:ref/comment
-{ "text": "Ready for review. Testing: 1. ... Expected: ..." }
+{ "text": "Ready for testing. Instructions: 1. ... Expected: ..." }
 
 PATCH /v1/task/:ref
-{ "field": "Status", "value": "Pending Review" }
+{ "field": "Status", "value": "Testing" }
 
 PATCH /v1/task/:ref
 { "field": "Pull Request", "value": "https://github.com/org/repo/pull/<number>" }
@@ -389,7 +393,7 @@ git checkout <root-branch>
 
 register('review', 'Review', `# Review Workflow
 
-Reviews are picked up from **Pending Review**, ordered by issue number ascending (lowest first) unless told otherwise. A review ends in **Approved** or **Issues Found**. All review work happens on a dedicated review branch — never on the root branch.
+Reviews are picked up from **Deploying** tasks that do not yet have the \`reviewed\` label, ordered by issue number ascending (lowest first) unless told otherwise. A review ends in **Approved** or **Issues Found**. All review work happens on a dedicated review branch — never on the root branch.
 
 ---
 
@@ -507,10 +511,8 @@ POST /v1/github/pr
 
 \`\`\`http
 POST /v1/task/:ref/comment
-{ "text": "Review passed (round <n>). Review PR: #<new-pr>. Moving to Awaiting Deployment." }
+{ "text": "Review passed (round <n>). Review PR: #<new-pr>. Ready to merge and deploy." }
 
-PATCH /v1/task/:ref
-{ "field": "Status", "value": "Awaiting Deployment" }
 \`\`\`
 
 ---
@@ -639,7 +641,7 @@ PATCH /v1/task/:ref
 
 register('testing', 'Testing', `# Testing Workflow
 
-After deployment, tasks move to **Testing**. Validates the implementation in the deployed environment against acceptance criteria. Testing is performed by a human; the agent supports by reading the task and updating status.
+**Testing** covers every kind of testing — peer, dev, stage and production. A task is in Testing twice: before deploy (peer, dev or stage) and after deploy (production). Labels record which environments passed: \`peer-tested\`, \`stage-tested\`, \`prod-tested\`. Validates the implementation against acceptance criteria. Testing is performed by a human; the agent supports by reading the task and updating status.
 
 ---
 
@@ -672,9 +674,27 @@ Screenshot required — do not report without one.
 
 ## 3. Outcome: All Good
 
+**Before deploy** (peer, dev or stage): add the matching label and move to Deploying.
+
+\`\`\`http
+POST /v1/task/:ref/comment
+{ "text": "Peer testing passed. Moving to Deploying." }
+
+PATCH /v1/github/issue/:number
+{ "labels": ["peer-tested"] }
+
+PATCH /v1/task/:ref
+{ "field": "Status", "value": "Deploying" }
+\`\`\`
+
+**After deploy** (production): add \`prod-tested\` and move to Pending Acceptance.
+
 \`\`\`http
 POST /v1/task/:ref/comment
 { "text": "Testing passed. Moving to Pending Acceptance." }
+
+PATCH /v1/github/issue/:number
+{ "labels": ["prod-tested"] }
 
 PATCH /v1/task/:ref
 { "field": "Status", "value": "Pending Acceptance" }
@@ -1026,7 +1046,7 @@ POST   /v1/github/pr/:number/review  { "action": "approve" }
 ## Status Flow
 
 \`\`\`
-Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed
+Planning → Backlog → Up Next → In Progress → Testing → Deploying → Testing → Pending Acceptance → Completed
 \`\`\`
 
 Side states: **Icebox** (parked), **Cancelled** (terminal). What each status means: \`GET /v1/rules\`.

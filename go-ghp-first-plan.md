@@ -37,7 +37,7 @@ These are things the current Notion implementation built by hand. On GHP they're
 The `GET /v1/github/project/:id/issues?review_queue=1` logic (Kahn's topological sort,
 external dep fetching, cycle detection) is the most brittle piece in the codebase. Its
 underlying need — "what order should we merge?" — is answered by PR cross-references in GitHub.
-Delete it. Any equivalent behavior belongs in a GHP view filtered to `Status = Pending Review`
+Delete it. Any equivalent behavior belongs in a GHP view filtered to `Status = Deploying`
 sorted by issue number.
 
 **`workspace_repos` table**
@@ -130,7 +130,7 @@ When bootstrapping a new workspace on GHP:
 1. `POST /v1/github/project/bootstrap` — provisions all arxys fields (Priority, Effort, Due Date,
    Git Branch, Pull Request, Review round, Tags)
 2. Set up saved views: `Active` (excludes Icebox, Completed, Cancelled), `Review Queue`
-   (Status = Pending Review, sorted by number), `Icebox`
+   (Status = Deploying, sorted by number), `Icebox`
 
 ---
 

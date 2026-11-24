@@ -151,7 +151,7 @@ POST /v1/task/:ref/comment
 
 ---
 
-## 8. Move to Pending Review
+## 8. Move to Testing
 
 Post testing instructions (what to test, how to trigger, expected outcome), then update status:
 
@@ -160,7 +160,7 @@ POST /v1/task/:ref/comment
 { "text": "Ready for review. Testing: 1. ... 2. ... Expected: ..." }
 
 PATCH /v1/task/:ref
-{ "field": "Status", "value": "Pending Review" }
+{ "field": "Status", "value": "Testing" }
 ```
 
 Remove the `coding` label if present. Set `Pull Request` field:
@@ -170,7 +170,7 @@ PATCH /v1/task/:ref
 { "field": "Pull Request", "value": "https://github.com/org/repo/pull/<number>" }
 ```
 
-**Resubmission after Issues Found**: if the task was previously reviewed and returned, increment `Review round` before moving back to Pending Review:
+**Resubmission after Issues Found**: if the task was previously reviewed and returned, increment `Review round` before moving back to Testing:
 
 ```http
 PATCH /v1/task/:ref

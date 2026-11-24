@@ -2,7 +2,7 @@
 
 ## Overview
 
-Reviews are picked up from tasks in **Pending Review**, ordered by issue number ascending (lowest first) — unless explicitly told otherwise.
+Reviews are picked up from tasks in **Deploying** that do not yet have the `reviewed` label, ordered by issue number ascending (lowest first) — unless explicitly told otherwise.
 
 A review ends in one of two outcomes: **Approved** or **Issues Found**.
 
@@ -195,17 +195,15 @@ POST /v1/github/pr
 
 The `supersedes` flag cross-references and closes the original PR automatically.
 
-4. Update task labels and move to `Awaiting Deployment`:
+4. Update task labels. The task stays in **Deploying** — review and deploy are one step:
 
 ```http
 POST /v1/task/:ref/comment
-{ "text": "Review passed (round <n>). Review PR: #<new-pr-number>. Moving to Awaiting Deployment." }
+{ "text": "Review passed (round <n>). Review PR: #<new-pr-number>. Ready to merge and deploy." }
 
 PATCH /v1/github/issue/:number
 { "labels": ["reviewed", "pending-merge"] }
 
-PATCH /v1/task/:ref
-{ "field": "Status", "value": "Awaiting Deployment" }
 ```
 
 ---
@@ -214,8 +212,8 @@ PATCH /v1/task/:ref
 
 Initiated by the human, not the agent:
 
-- **`Awaiting Deployment → Testing`**: after the review PR is merged, clear `pending-merge` and move to Testing.
-- **`Testing → Pending Acceptance`**: testing passed.
+- **`Deploying → Testing`**: after the review PR is merged and deployed, clear `pending-merge` and move to Testing (production).
+- **`Testing → Pending Acceptance`**: production testing passed.
 - **`Pending Acceptance → Completed`**: stakeholder sign-off.
 
 ---

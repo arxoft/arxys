@@ -27,15 +27,16 @@ These are the Status options on the project board (names must match exactly when
 | **Backlog** | Shaped and ready to be pulled when capacity allows. |
 | **Up Next** | This is ready to be picked up |
 | **In Progress** | This is actively being worked on |
-| **Pending Review** | This item is in review |
-| **Awaiting Deployment** | Review passed. Waiting to be deployed to production. |
-| **Testing** | Deployed. Being verified against the acceptance criteria. |
+| **Testing** | Being verified against the acceptance criteria — peer, dev, stage or production. Labels say which. |
+| **Deploying** | Reviewed, merged and deployed in one pass. |
 | **Pending Acceptance** | Testing passed. Waiting for stakeholder sign-off. |
 | **Completed** | This has been completed |
 | **Cancelled** | Won't be done. Dropped or no longer needed. |
 | **Icebox** | Parked. Hidden from task lists unless asked for by name. |
 
-Flow: Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed. Side states: Icebox (parked), Cancelled (terminal).
+Flow: Planning → Backlog → Up Next → In Progress → Testing → Deploying → Testing → Pending Acceptance → Completed. Side states: Icebox (parked), Cancelled (terminal).
+
+Testing appears twice: before deploy (peer, dev or stage testing) and after deploy (production testing). Labels record which environments have passed: `peer-tested`, `stage-tested`, `prod-tested`. Review and deploy are one step — **Deploying**. A failed test sends the task back to Up Next.
 
 ## Standard Labels
 
@@ -51,6 +52,9 @@ Created automatically by `POST /v1/github/project/bootstrap`. Apply with `PATCH 
 | `issue-persists` | Major issue found — sent back to developer |
 | `hotfix` | Fast-track critical production fix |
 | `need-info` | Blocked on missing information before work can start |
+| `peer-tested` | Passed peer testing (another tester or developer, usually on dev) |
+| `stage-tested` | Passed testing on stage |
+| `prod-tested` | Passed production testing |
 
 ## Git Rules
 

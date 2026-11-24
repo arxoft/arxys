@@ -2,7 +2,7 @@
 
 > ⛔ Production deployment must only be performed by a human. The agent must never execute deployment steps — not SSH, not server restarts, not migrations on the server.
 
-Tasks reach **Awaiting Deployment** after review passes. This workflow covers what to do before, during, and after deploying to production.
+Tasks reach **Deploying** after pre-deploy testing passes. Review and deploy happen together in this status. This workflow covers what to do before, during, and after deploying to production.
 
 ---
 
@@ -84,5 +84,5 @@ Rollback if necessary — human does this.
 
 ## Status Flow
 
-`Awaiting Deployment → Testing`  (deployed successfully)
-`Awaiting Deployment → Up Next`  (deployment failed)
+`Deploying → Testing`  (deployed successfully; production testing)
+`Deploying → Up Next`  (deployment failed)

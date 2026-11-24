@@ -122,7 +122,7 @@ POST   /v1/github/pr/:number/review  { "action": "approve" }
 ## Status Flow
 
 ```
-Planning → Backlog → Up Next → In Progress → Pending Review → Awaiting Deployment → Testing → Pending Acceptance → Completed
+Planning → Backlog → Up Next → In Progress → Testing → Deploying → Testing → Pending Acceptance → Completed
 ```
 
 Side states: **Icebox** (parked), **Cancelled** (terminal). What each status means: `GET /v1/rules`.
